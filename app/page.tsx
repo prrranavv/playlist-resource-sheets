@@ -254,6 +254,7 @@ export default function Home() {
               >
                 {phase === "waiting" ? `Wait ${waitRemaining}s` : fetchingAssessments ? "Fetching..." : "Fetch Assessments"}
               </Button>
+              
               {(() => {
                 let matched = 0;
                 const pairs: Array<{quizId: string; draftVersion: string}> = [];
@@ -335,31 +336,12 @@ export default function Home() {
                   document.body.removeChild(a);
                   URL.revokeObjectURL(url);
                 };
-                const onCreateInteractive = async () => {
-                  setError(null);
-                  // run over all items similar to assessments
-                  for (const it of items) {
-                    try {
-                      await fetch("/api/wayground/create-interactive", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ videoUrl: `https://www.youtube.com/watch?v=${it.id}`, videoId: it.id, duration: 0 }),
-                      });
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }
-                  // start a 90s wait after triggering
-                  setPhase("creating");
-                  startWaitCountdown(90);
-                };
                 return (
                   <>
                     <Button size="sm" variant="secondary" onClick={onPublishAll} disabled={publishing || pairs.length === 0}>
                       {publishing ? `Publishing (${publishProgress.done}/${publishProgress.total})` : "Publish all"}
                     </Button>
                     <Button size="sm" variant="secondary" onClick={onExport} disabled={pairs.length === 0}>Export CSV</Button>
-                    <Button size="sm" onClick={onCreateInteractive}>Create Interactive Videos</Button>
                   </>
                 );
               })()}
@@ -367,6 +349,7 @@ export default function Home() {
                 <span className="text-xs text-muted-foreground">Waiting for assessments to generate… {waitRemaining}s</span>
               )}
             </div>
+            
             {(phase === "fetched" || phase === "published") && (
               <div className="mt-2 flex justify-end">
                 <span className="text-xs text-muted-foreground">
@@ -406,12 +389,17 @@ export default function Home() {
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{item.title}</p>
-                        {matched && matchedId && (
-                          <div className="flex items-center gap-2 text-xs text-green-600">
-                            <span>Assessment created</span>
-                            <span>✓</span>
-                          </div>
-                        )}
+                        
+                        {(() => {
+                          const matchedId = quizKeyById[item.id] ? Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === quizKeyById[item.id])?.[0] : undefined;
+                          if (!matchedId) return null;
+                          return (
+                            <div className="flex items-center gap-2 text-xs text-green-600">
+                              <span>Assessment created</span>
+                              <span>✓</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </a>
                     <div className="flex items-center gap-2">
