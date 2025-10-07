@@ -1,3 +1,27 @@
+# Playlist to Videos App
+
+Simple Next.js app to list all videos from a YouTube playlist.
+
+## Setup
+
+1. Create a `.env.local` file at the project root and set:
+
+```
+YOUTUBE_API_KEY=your_api_key_here
+# Wayground integration (copy from your browser session if required)
+WAYGROUND_COOKIE=your_cookie_string
+WAYGROUND_CSRF=your_csrf_token
+```
+
+2. Install dependencies and run the dev server:
+
+```
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000` and paste a YouTube playlist URL or ID, then click "Show Videos".
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
