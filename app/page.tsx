@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import Image from "next/image";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -23,6 +23,7 @@ export default function Home() {
   const [items, setItems] = useState<PlaylistItem[]>([]);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [playlistTitle, setPlaylistTitle] = useState<string | null>(null);
+  const [channelTitle, setChannelTitle] = useState<string | null>(null);
   const [grade, setGrade] = useState<string>("6");
   const [subject, setSubject] = useState<string>("Science");
   const [creatingId, setCreatingId] = useState<string | null>(null);
@@ -49,6 +50,20 @@ export default function Home() {
   const [interactiveWaitRemaining, setInteractiveWaitRemaining] = useState<number>(0);
   const [publishingIVs, setPublishingIVs] = useState(false);
   const [publishIVProgress, setPublishIVProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
+  const [createFlowStatus, setCreateFlowStatus] = useState<
+    | "idle"
+    | "creatingA"
+    | "waitingA"
+    | "fetchingA"
+    | "doneA"
+    | "creatingIV"
+    | "waitingIV"
+    | "fetchingIV"
+    | "doneIV"
+  >("idle");
+  const [assessmentMatchedCount, setAssessmentMatchedCount] = useState<number>(0);
+  const [ivMatchedCount, setIvMatchedCount] = useState<number>(0);
+  const [readyToPublish, setReadyToPublish] = useState(false);
 
   function buildAssessmentPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
     const pairs: Array<{ quizId: string; draftVersion: string }> = [];
@@ -64,6 +79,155 @@ export default function Home() {
     return pairs;
   }
 
+  function pause(ms: number) { return new Promise<void>((res) => setTimeout(res, ms)); }
+
+  function computeAssessmentMatchCount(): number {
+    let matched = 0;
+    for (const it of items) {
+      const vKey = quizKeyById[it.id];
+      if (!vKey) continue;
+      const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
+      if (entry) matched += 1;
+    }
+    return matched;
+  }
+
+  async function fetchInteractivesAndUpdate() {
+    const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST" });
+    const data = await res.json();
+    if (res.ok && Array.isArray(data?.interactive)) {
+      const setMap: Record<string, boolean> = {};
+      const infoMap: Record<string, { quizId: string; draftVersion: string }> = {};
+      const metaMap: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
+      for (const it of data.interactive as Array<{ quizId: string; title: string; videoId: string; draftVersion?: string | null }>) {
+        setMap[it.videoId] = true;
+        if (it.draftVersion) {
+          infoMap[it.videoId] = { quizId: it.quizId, draftVersion: it.draftVersion };
+          metaMap[it.videoId] = { quizId: it.quizId, draftVersion: it.draftVersion, title: it.title };
+        }
+      }
+      setInteractiveCreatedById((prev) => ({ ...prev, ...setMap }));
+      setInteractiveInfoByVideoId((prev) => ({ ...prev, ...infoMap }));
+      setInteractiveMetaByVideoId((prev) => ({ ...prev, ...metaMap }));
+      // compute IV match count
+      let matched = 0;
+      for (const it of items) if (setMap[it.id] || interactiveCreatedById[it.id]) matched += 1;
+      setIvMatchedCount(matched);
+    }
+  }
+
+  async function createResources() {
+    if (items.length === 0) return;
+    setReadyToPublish(false);
+    setCreateFlowStatus("creatingA");
+    await createAssessmentsBulk();
+    setCreateFlowStatus("waitingA");
+    startWaitCountdown(90);
+    await pause(90_000);
+    setCreateFlowStatus("fetchingA");
+    await fetchAssessments();
+    setAssessmentMatchedCount(computeAssessmentMatchCount());
+    setCreateFlowStatus("doneA");
+    await pause(5_000);
+    setCreateFlowStatus("creatingIV");
+    await createInteractivesBulk();
+    setCreateFlowStatus("waitingIV");
+    // countdown already started inside createInteractivesBulk to 90s
+    await pause(90_000);
+    setCreateFlowStatus("fetchingIV");
+    await fetchInteractivesAndUpdate();
+    setCreateFlowStatus("doneIV");
+    setReadyToPublish(true);
+  }
+
+  function buildIvPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
+    const pairs: Array<{ quizId: string; draftVersion: string }> = [];
+    for (const [videoId, info] of Object.entries(interactiveInfoByVideoId)) {
+      if (!interactiveCreatedById[videoId]) continue;
+      if (info?.quizId && info?.draftVersion) pairs.push({ quizId: info.quizId, draftVersion: info.draftVersion });
+    }
+    return pairs;
+  }
+
+  async function exportCsv() {
+    const rows: Array<string[]> = [];
+    rows.push([
+      "YouTube Playlist Name",
+      "YouTube Playlist Link",
+      "YouTube Video Title",
+      "YouTube Video ID",
+      "YouTube Video Link",
+      "Wayground Assessment Title",
+      "Wayground Assessment Link",
+      "Wayground Assessment Quiz ID",
+      "Wayground IV Title",
+      "Wayground IV Link",
+      "Wayground IV Quiz ID",
+    ]);
+    const playlistLink = playlistId ? `https://www.youtube.com/playlist?list=${playlistId}` : "";
+    for (const it of items) {
+      const vKey = quizKeyById[it.id];
+      if (!vKey) continue;
+      const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
+      if (!entry) continue;
+      const [qId, meta] = entry as [string, { title: string }];
+      const videoLink = `https://www.youtube.com/watch?v=${it.id}`;
+      const assessmentLink = `https://wayground.com/admin/quiz/${qId}`;
+      const ivMeta = interactiveMetaByVideoId[it.id];
+      const ivTitle = ivMeta?.title || "";
+      const ivLink = ivMeta?.quizId ? `https://wayground.com/admin/quiz/${ivMeta.quizId}` : "";
+      const ivId = ivMeta?.quizId || "";
+      rows.push([
+        playlistTitle || "",
+        playlistLink,
+        it.title,
+        it.id,
+        videoLink,
+        meta.title || "",
+        assessmentLink,
+        qId,
+        ivTitle,
+        ivLink,
+        ivId,
+      ]);
+    }
+    const csv = rows.map(r => r.map((v) => `"${(v || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(playlistTitle || 'playlist').replace(/[^a-z0-9-_ ]/gi, '').trim() || 'playlist'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function publishResources() {
+    const assessmentPairs = buildAssessmentPublishPairs();
+    const ivPairs = buildIvPublishPairs();
+    setPublishing(true);
+    setPublishProgress({ done: 0, total: assessmentPairs.length });
+    for (const p of assessmentPairs) {
+      try {
+        await fetch("/api/wayground/publish-quiz", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(p) });
+        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quizId: p.quizId }) });
+      } catch {}
+      setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
+    }
+    setPublishing(false);
+    setPublishingIVs(true);
+    setPublishIVProgress({ done: 0, total: ivPairs.length });
+    for (const p of ivPairs) {
+      try {
+        await fetch("/api/wayground/publish-interactive", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(p) });
+        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quizId: p.quizId }) });
+      } catch {}
+      setPublishIVProgress((s) => ({ ...s, done: s.done + 1 }));
+    }
+    setPublishingIVs(false);
+    await exportCsv();
+  }
   async function publishAssessmentsAll() {
     const pairs = buildAssessmentPublishPairs();
     if (pairs.length === 0) return;
@@ -117,6 +281,7 @@ export default function Home() {
       }
       setPlaylistId(data.playlistId as string);
       setPlaylistTitle((data.playlistTitle as string) || null);
+      setChannelTitle((data.channelTitle as string) || null);
       setItems((data.items as PlaylistItem[]).sort((a, b) => a.position - b.position));
       setPhase("videos");
     } catch (e: unknown) {
@@ -216,8 +381,6 @@ export default function Home() {
   async function createInteractive(item: PlaylistItem): Promise<boolean> {
     setCreatingInteractiveId(item.id);
     try {
-      // Start wait window from the time the request is made
-      startInteractiveWaitCountdown(60);
       const res = await fetch("/api/wayground/create-interactive", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -263,8 +426,8 @@ export default function Home() {
       setInteractiveProgress((p) => ({ ...p, done: p.done + 1 }));
     }
     setBulkCreatingInteractive(false);
-    // Ensure at least 60s wait after the last create in bulk
-    startInteractiveWaitCountdown(60);
+    // Ensure 90s wait after the last create in bulk
+    startInteractiveWaitCountdown(90);
   }
 
   async function fetchAssessments() {
@@ -315,8 +478,8 @@ export default function Home() {
     <div className="min-h-screen font-sans p-6 sm:p-10">
       <div className="mx-auto max-w-4xl space-y-6">
         <Card>
-          <CardHeader>
-            <CardTitle>Fetch YouTube Playlist Videos</CardTitle>
+          <CardHeader className="pb-2">
+            <h2 className="text-xl font-semibold leading-none">YouTube Playlist Sheets</h2>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -328,48 +491,12 @@ export default function Home() {
               <Button onClick={fetchPlaylist} disabled={!input || loading}>
                 {loading ? "Loading..." : "Show Videos"}
               </Button>
-              {(() => {
-                const matchedVideoIds = Object.keys(interactiveInfoByVideoId);
-                const hasAny = matchedVideoIds.some((vid) => interactiveCreatedById[vid]);
-                const onPublishAllIVs = async () => {
-                  const pairs: Array<{ quizId: string; draftVersion: string }> = [];
-                  for (const [videoId, info] of Object.entries(interactiveInfoByVideoId)) {
-                    if (!interactiveCreatedById[videoId]) continue;
-                    if (info?.quizId && info?.draftVersion) pairs.push({ quizId: info.quizId, draftVersion: info.draftVersion });
-                  }
-                  if (pairs.length === 0) return;
-                  setPublishingIVs(true);
-                  setPublishIVProgress({ done: 0, total: pairs.length });
-                  for (const p of pairs) {
-                    try {
-                      await fetch("/api/wayground/publish-interactive", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify(p),
-                      });
-                      await fetch("/api/wayground/make-public", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ quizId: p.quizId }),
-                      });
-                    } catch {}
-                    setPublishIVProgress((s) => ({ ...s, done: s.done + 1 }));
-                  }
-                  setPublishingIVs(false);
-                };
-                return (
-                  <Button size="sm" variant="secondary" data-publish-ivs onClick={onPublishAllIVs} disabled={!hasAny || publishingIVs}>
-                    {publishingIVs ? `Publishing IVs (${publishIVProgress.done}/${publishIVProgress.total})` : "Publish IVs"}
-                  </Button>
-                );
-              })()}
+              {/* Publish IVs button removed per request */}
             </div>
             {error && (
               <p className="text-sm text-red-600 mt-3">{error}</p>
             )}
-            {playlistId && !error && (
-              <p className="text-xs text-muted-foreground mt-3">Playlist ID: {playlistId}{playlistTitle ? ` • ${playlistTitle}` : ""}</p>
-            )}
+            {/* Removed playlist ID display */}
             <div className="flex flex-col sm:flex-row gap-3 mt-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm">Subject</span>
@@ -400,195 +527,36 @@ export default function Home() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3 mt-3">
-              {/* Row 1: Assessments actions */}
-              <Button size="sm" variant="default" onClick={createAssessmentsBulk} disabled={loading || bulkCreating || items.length === 0}>
-                {bulkCreating ? `Creating (${bulkProgress.done}/${bulkProgress.total})` : "Create all assessments"}
+              <Button size="sm" variant="default" onClick={createResources} disabled={items.length === 0 || !(createFlowStatus === "idle" || createFlowStatus === "doneIV") }>
+                {createFlowStatus === "creatingA" ? `Creating assessments (${bulkProgress.done}/${bulkProgress.total})` :
+                 createFlowStatus === "waitingA" ? `Waiting ${waitRemaining}s` :
+                 createFlowStatus === "fetchingA" ? "Fetching assessments…" :
+                 createFlowStatus === "creatingIV" ? `Creating IVs (${interactiveProgress.done}/${interactiveProgress.total})` :
+                 createFlowStatus === "waitingIV" ? `Waiting ${interactiveWaitRemaining}s` :
+                 createFlowStatus === "fetchingIV" ? "Fetching IVs…" :
+                 "Create resources"}
               </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={fetchAssessments}
-                disabled={fetchingAssessments || !(phase === "can_fetch" || phase === "fetched" || phase === "published")}
-              >
-                {phase === "waiting" ? `Wait ${waitRemaining}s` : fetchingAssessments ? "Fetching..." : "Fetch Assessments"}
+              <Button size="sm" variant="secondary" onClick={publishResources} disabled={!readyToPublish || publishing || publishingIVs}>
+                {publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` : "Publish resources & Export Sheet"}
               </Button>
-              <Button size="sm" variant="secondary" onClick={publishAssessmentsAll} disabled={publishing || buildAssessmentPublishPairs().length === 0}>
-                {publishing ? `Publishing (${publishProgress.done}/${publishProgress.total})` : "Publish assessments"}
-              </Button>
-
-              {/* Row 2: Interactive actions */}
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={createInteractivesBulk}
-                disabled={bulkCreatingInteractive || items.length === 0}
-              >
-                {bulkCreatingInteractive ? `Creating interactives (${interactiveProgress.done}/${interactiveProgress.total})` : "Create all IVs"}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={async () => {
-                  setFetchingInteractive(true);
-                  try {
-                    const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST" });
-                    const data = await res.json();
-                    if (res.ok && Array.isArray(data?.interactive)) {
-                      const setMap: Record<string, boolean> = {};
-                      const infoMap: Record<string, { quizId: string; draftVersion: string }> = {};
-                      const metaMap: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
-                      for (const it of data.interactive as Array<{ quizId: string; title: string; videoId: string; draftVersion?: string | null }>) {
-                        setMap[it.videoId] = true;
-                        if (it.draftVersion) {
-                          infoMap[it.videoId] = { quizId: it.quizId, draftVersion: it.draftVersion };
-                          metaMap[it.videoId] = { quizId: it.quizId, draftVersion: it.draftVersion, title: it.title };
-                        }
-                      }
-                      setInteractiveCreatedById((prev) => ({ ...prev, ...setMap }));
-                      setInteractiveInfoByVideoId((prev) => ({ ...prev, ...infoMap }));
-                      setInteractiveMetaByVideoId((prev) => ({ ...prev, ...metaMap }));
-                    } else {
-                      console.error(data?.error || "Failed to fetch interactive map");
-                    }
-      } catch (e: unknown) {
-                    console.error(e);
-                  } finally {
-                    setFetchingInteractive(false);
-                  }
-                }}
-                disabled={fetchingInteractive || interactivePhase === "waiting"}
-              >
-                {interactivePhase === "waiting" ? `Wait ${interactiveWaitRemaining}s` : (fetchingInteractive ? "Fetching Interactives..." : "Fetch IVs")}
-              </Button>
-              
-              {(() => {
-                let matched = 0;
-                const pairs: Array<{quizId: string; draftVersion: string}> = [];
-                for (const it of items) {
-                  const vKey = quizKeyById[it.id];
-                  if (!vKey) continue;
-                  const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
-                  if (!entry) continue;
-                  const [qId] = entry;
-                  const dV = draftVersionById[qId];
-                  if (qId && dV) {
-                    matched += 1;
-                    pairs.push({ quizId: qId, draftVersion: dV });
-                  }
-                }
-                const onPublishAll = async () => {
-                  if (pairs.length === 0) return;
-                  setPublishing(true);
-                  setPublishProgress({ done: 0, total: pairs.length });
-                  for (const p of pairs) {
-                    try {
-                      await fetch("/api/wayground/publish-quiz", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify(p),
-                      });
-                      await fetch("/api/wayground/make-public", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ quizId: p.quizId }),
-                      });
-                    } catch {}
-                    setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
-                  }
-                  setPublishing(false);
-                  setPhase("published");
-                  setPublishedDone(true);
-                };
-                const onExport = () => {
-                  const rows: Array<string[]> = [];
-                  rows.push([
-                    "YouTube Playlist Name",
-                    "YouTube Playlist Link",
-                    "YouTube Video Title",
-                    "YouTube Video ID",
-                    "YouTube Video Link",
-                    "Wayground Assessment Title",
-                    "Wayground Assessment Link",
-                    "Wayground Assessment Quiz ID",
-                    "Wayground IV Title",
-                    "Wayground IV Link",
-                    "Wayground IV Quiz ID",
-                  ]);
-                  const playlistLink = playlistId ? `https://www.youtube.com/playlist?list=${playlistId}` : "";
-                  for (const it of items) {
-                    const vKey = quizKeyById[it.id];
-                    if (!vKey) continue;
-                    const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
-                    if (!entry) continue;
-                    const [qId, meta] = entry as [string, { title: string }];
-                    const videoLink = `https://www.youtube.com/watch?v=${it.id}`;
-                    const assessmentLink = `https://wayground.com/admin/quiz/${qId}`;
-                    const ivMeta = interactiveMetaByVideoId[it.id];
-                    const ivTitle = ivMeta?.title || "";
-                    const ivLink = ivMeta?.quizId ? `https://wayground.com/admin/quiz/${ivMeta.quizId}` : "";
-                    const ivId = ivMeta?.quizId || "";
-                    rows.push([
-                      playlistTitle || "",
-                      playlistLink,
-                      it.title,
-                      it.id,
-                      videoLink,
-                      meta.title || "",
-                      assessmentLink,
-                      qId,
-                      ivTitle,
-                      ivLink,
-                      ivId,
-                    ]);
-                  }
-                  const csv = rows.map(r => r.map((v) => `"${(v || "").replace(/"/g, '""')}"`).join(",")).join("\n");
-                  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${(playlistTitle || 'playlist').replace(/[^a-z0-9-_ ]/gi, '').trim() || 'playlist'}.csv`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                };
-                return (
-                  <>
-                    <Button size="sm" variant="secondary" onClick={() => {
-                      // Trigger the top Publish IVs handler programmatically to avoid duplication
-                      const btn = document.querySelector('[data-publish-ivs]') as HTMLButtonElement | null;
-                      btn?.click();
-                    }}>Publish IVs</Button>
-                    <Button size="sm" variant="secondary" onClick={onExport} disabled={pairs.length === 0}>Export CSV</Button>
-                  </>
-                );
-              })()}
-              {phase === "waiting" && (
-                <span className="text-xs text-muted-foreground">Waiting for assessments to generate… {waitRemaining}s</span>
+              {(createFlowStatus === "doneIV" || readyToPublish) && (
+                <span className="text-xs text-muted-foreground">{assessmentMatchedCount}/{items.length} assessments • {ivMatchedCount}/{items.length} interactive videos created</span>
               )}
             </div>
             
-            {(phase === "fetched" || phase === "published") && (
-              <div className="mt-2 flex justify-end">
-                <span className="text-xs text-muted-foreground">
-                  {(() => {
-                    let matched = 0;
-                    for (const it of items) {
-                      const vKey = quizKeyById[it.id];
-                      if (!vKey) continue;
-                      const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
-                      if (entry) matched += 1;
-                    }
-                    return `${matched}/${items.length} assessments created!`;
-                  })()}
-                </span>
-              </div>
-            )}
+            {/* Removed per request: do not show repeated assessments created text here */}
           </CardContent>
         </Card>
 
         {items.length > 0 && (
           <div className="space-y-2">
+            {(playlistTitle || channelTitle) && (
+              <div className="px-2">
+                <p className="text-sm text-muted-foreground">
+                  Playlist: {playlistTitle || "-"} ⋅ Channel: {channelTitle || "-"}
+                </p>
+              </div>
+            )}
             <div className="rounded-md border divide-y">
               {items.map((item) => {
                 const videoKey = quizKeyById[item.id];
@@ -625,14 +593,7 @@ export default function Home() {
                         })()}
                       </div>
                     </a>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={() => createAssessment(item)} disabled={!!creatingId || !!quizKeyById[item.id]}>
-                        {creatingId === item.id ? "Creating..." : "Create"}
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => createInteractive(item)} disabled={!!creatingInteractiveId || !!interactiveCreatedById[item.id]}>
-                        {creatingInteractiveId === item.id ? "Creating..." : (!!interactiveCreatedById[item.id] ? "Interactive ✓" : "Interactive")}
-                      </Button>
-                    </div>
+                    {/* Per-video action buttons removed per request */}
                   </div>
                 );
               })}

@@ -83,16 +83,24 @@ async function fetchAllPlaylistItems(playlistId: string, apiKey: string): Promis
   return collected;
 }
 
-async function fetchPlaylistTitle(playlistId: string, apiKey: string): Promise<string | null> {
+async function fetchPlaylistMeta(
+  playlistId: string,
+  apiKey: string
+): Promise<{ title: string | null; channelTitle: string | null }> {
   const url = new URL("https://www.googleapis.com/youtube/v3/playlists");
   url.searchParams.set("part", "snippet");
   url.searchParams.set("id", playlistId);
   url.searchParams.set("key", apiKey);
   const res = await fetch(url.toString());
-  if (!res.ok) return null;
+  if (!res.ok) return { title: null, channelTitle: null };
   const data = await res.json();
-  const title = data?.items?.[0]?.snippet?.title as string | undefined;
-  return title ?? null;
+  const snippet = data?.items?.[0]?.snippet as
+    | { title?: string; channelTitle?: string }
+    | undefined;
+  return {
+    title: snippet?.title ?? null,
+    channelTitle: snippet?.channelTitle ?? null,
+  };
 }
 
 export async function GET(request: Request) {
@@ -113,11 +121,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [items, title] = await Promise.all([
+    const [items, meta] = await Promise.all([
       fetchAllPlaylistItems(playlistId, apiKey),
-      fetchPlaylistTitle(playlistId, apiKey),
+      fetchPlaylistMeta(playlistId, apiKey),
     ]);
-    return NextResponse.json({ playlistId, playlistTitle: title, items });
+    return NextResponse.json({ playlistId, playlistTitle: meta.title, channelTitle: meta.channelTitle, items });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
