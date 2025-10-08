@@ -185,7 +185,7 @@ export default function Home() {
       }
       if (startWait) startWaitCountdown(90);
       return true;
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
       setError("Failed to create assessment. See console for details.");
       return false;
@@ -239,7 +239,7 @@ export default function Home() {
         throw new Error(typeof data === "string" ? data : JSON.stringify(data));
       }
       return true;
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
       setError("Failed to create interactive video. See console for details.");
       return false;
@@ -301,9 +301,10 @@ export default function Home() {
         }
       }
       setPhase("fetched");
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setError(e?.message || "Failed to fetch assessments");
+      const msg = typeof e === "object" && e && "message" in e ? String((e as any).message) : "Failed to fetch assessments";
+      setError(msg);
     } finally {
       setFetchingAssessments(false);
     }
@@ -448,7 +449,7 @@ export default function Home() {
                     } else {
                       console.error(data?.error || "Failed to fetch interactive map");
                     }
-                  } catch (e) {
+      } catch (e: unknown) {
                     console.error(e);
                   } finally {
                     setFetchingInteractive(false);

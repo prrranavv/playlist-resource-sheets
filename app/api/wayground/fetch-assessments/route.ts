@@ -8,13 +8,13 @@ const HARDCODED_CSRF = "8-kxnR3tzNUhRsmaWpsq71BrXk8";
 
 type QuizSummary = { id: string; title: string };
 
-function pushIfValid(results: Map<string, QuizSummary>, id: any, title: any) {
+function pushIfValid(results: Map<string, QuizSummary>, id: unknown, title: unknown) {
   if (typeof id === "string" && /^[a-f0-9]{24}$/i.test(id) && typeof title === "string" && title.length > 0) {
     if (!results.has(id)) results.set(id, { id, title });
   }
 }
 
-function collectQuizSummaries(value: any, results: Map<string, QuizSummary>) {
+function collectQuizSummaries(value: unknown, results: Map<string, QuizSummary>) {
   if (!value) return;
   if (Array.isArray(value)) {
     for (const v of value) collectQuizSummaries(v, results);
@@ -22,21 +22,25 @@ function collectQuizSummaries(value: any, results: Map<string, QuizSummary>) {
   }
   if (typeof value !== "object") return;
 
-  const obj: any = value;
+  const obj: Record<string, unknown> = value as Record<string, unknown>;
   // Prefer explicit quiz/draft structures if present
-  if (obj.quiz && typeof obj.quiz === "object") {
-    const id = obj.quiz._id || obj.quiz.id;
-    const title = obj.draft?.name || obj.quiz.name || obj.name || obj.title;
+  const quizObj = obj["quiz"] as Record<string, unknown> | undefined;
+  if (quizObj && typeof quizObj === "object") {
+    const id = (quizObj as any)._id || (quizObj as any).id;
+    const draftObj = obj["draft"] as Record<string, unknown> | undefined;
+    const title = (draftObj as any)?.name || (quizObj as any).name || (obj as any).name || (obj as any).title;
     pushIfValid(results, id, title);
   }
-  if (obj.draft && typeof obj.draft === "object") {
-    const title = obj.draft.name || obj.name || obj.title;
-    const id = obj.quiz?._id || obj.quiz?.id || obj._id || obj.id;
+  const draftObj2 = obj["draft"] as Record<string, unknown> | undefined;
+  if (draftObj2 && typeof draftObj2 === "object") {
+    const title = (draftObj2 as any).name || (obj as any).name || (obj as any).title;
+    const quizObj2 = obj["quiz"] as Record<string, unknown> | undefined;
+    const id = (quizObj2 as any)?._id || (quizObj2 as any)?.id || (obj as any)._id || (obj as any).id;
     pushIfValid(results, id, title);
   }
   // Fallback: only when object looks like a quiz doc
-  if (obj.type === "quiz" || obj.hasDraftVersion === true) {
-    pushIfValid(results, obj._id || obj.id, obj.name || obj.title);
+  if ((obj as any).type === "quiz" || (obj as any).hasDraftVersion === true) {
+    pushIfValid(results, (obj as any)._id || (obj as any).id, (obj as any).name || (obj as any).title);
   }
 
   for (const v of Object.values(obj)) collectQuizSummaries(v, results);
@@ -85,9 +89,9 @@ export async function POST() {
     });
 
     const text = await res.text();
-    let data: any = null;
+    let data: unknown = null;
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(text) as unknown;
     } catch {
       return new NextResponse(text, { status: res.status });
     }

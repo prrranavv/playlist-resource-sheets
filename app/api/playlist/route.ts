@@ -49,7 +49,16 @@ async function fetchAllPlaylistItems(playlistId: string, apiKey: string): Promis
     }
     const data = await res.json();
 
-    const items = (data.items ?? []) as any[];
+    type YouTubeApiItem = {
+      snippet?: {
+        resourceId?: { videoId?: string };
+        title?: string;
+        thumbnails?: { medium?: { url?: string }; default?: { url?: string } };
+        publishedAt?: string;
+        position?: number | string;
+      };
+    };
+    const items = (data.items ?? []) as YouTubeApiItem[];
     for (const item of items) {
       const snippet = item.snippet;
       if (!snippet) continue;
