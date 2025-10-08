@@ -52,9 +52,9 @@ export async function POST() {
       searchTerm: "",
       sortBy: "createdAt",
       sortOrder: "desc",
-      activityTypes: [],
+      activityTypes: ["quiz"],
       tab: "drafts",
-      _: "G2EtAO",
+      _: "uqF9It",
     };
 
     const res = await fetch(url.toString(), {
