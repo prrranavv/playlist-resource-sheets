@@ -24,23 +24,24 @@ function collectQuizSummaries(value: unknown, results: Map<string, QuizSummary>)
 
   const obj: Record<string, unknown> = value as Record<string, unknown>;
   // Prefer explicit quiz/draft structures if present
-  const quizObj = obj["quiz"] as Record<string, unknown> | undefined;
+  const quizObj = obj["quiz"] as { _id?: string; id?: string; name?: string } | undefined;
   if (quizObj && typeof quizObj === "object") {
-    const id = (quizObj as any)._id || (quizObj as any).id;
-    const draftObj = obj["draft"] as Record<string, unknown> | undefined;
-    const title = (draftObj as any)?.name || (quizObj as any).name || (obj as any).name || (obj as any).title;
+    const id = quizObj._id || quizObj.id;
+    const draftObj = obj["draft"] as { name?: string } | undefined;
+    const title = draftObj?.name || quizObj.name || (obj["name"] as string | undefined) || (obj["title"] as string | undefined);
     pushIfValid(results, id, title);
   }
-  const draftObj2 = obj["draft"] as Record<string, unknown> | undefined;
+  const draftObj2 = obj["draft"] as { name?: string } | undefined;
   if (draftObj2 && typeof draftObj2 === "object") {
-    const title = (draftObj2 as any).name || (obj as any).name || (obj as any).title;
-    const quizObj2 = obj["quiz"] as Record<string, unknown> | undefined;
-    const id = (quizObj2 as any)?._id || (quizObj2 as any)?.id || (obj as any)._id || (obj as any).id;
+    const title = draftObj2.name || (obj["name"] as string | undefined) || (obj["title"] as string | undefined);
+    const quizObj2 = obj["quiz"] as { _id?: string; id?: string } | undefined;
+    const id = quizObj2?._id || quizObj2?.id || (obj["_id"] as string | undefined) || (obj["id"] as string | undefined);
     pushIfValid(results, id, title);
   }
   // Fallback: only when object looks like a quiz doc
-  if ((obj as any).type === "quiz" || (obj as any).hasDraftVersion === true) {
-    pushIfValid(results, (obj as any)._id || (obj as any).id, (obj as any).name || (obj as any).title);
+  const isQuizType = obj["type"] === "quiz" || (obj["hasDraftVersion"] as boolean | undefined) === true;
+  if (isQuizType) {
+    pushIfValid(results, (obj["_id"] as string | undefined) || (obj["id"] as string | undefined), (obj["name"] as string | undefined) || (obj["title"] as string | undefined));
   }
 
   for (const v of Object.values(obj)) collectQuizSummaries(v, results);

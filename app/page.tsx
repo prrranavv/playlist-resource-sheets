@@ -119,17 +119,18 @@ export default function Home() {
       setPlaylistTitle((data.playlistTitle as string) || null);
       setItems((data.items as PlaylistItem[]).sort((a, b) => a.position - b.position));
       setPhase("videos");
-    } catch (e: any) {
-      setError(e?.message || "Something went wrong");
+    } catch (e: unknown) {
+      const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: string }).message) : "Something went wrong";
+      setError(msg);
     } finally {
       setLoading(false);
     }
   }
 
-  function findQuizGenKey(value: any): string | undefined {
+  function findQuizGenKey(value: unknown): string | undefined {
     if (!value) return undefined;
     if (typeof value === "object") {
-      for (const [k, v] of Object.entries(value)) {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
         if (k === "quizGenKey" && typeof v === "string") return v;
         const nested = findQuizGenKey(v);
         if (nested) return nested;
@@ -170,7 +171,7 @@ export default function Home() {
         }),
       });
       const cloned = res.clone();
-      let data: any = null;
+      let data: unknown = null;
       try {
         data = await res.json();
       } catch {
@@ -229,7 +230,7 @@ export default function Home() {
         }),
       });
       const cloned = res.clone();
-      let data: any = null;
+      let data: unknown = null;
       try {
         data = await res.json();
       } catch {
@@ -275,7 +276,7 @@ export default function Home() {
       if (!res.ok) throw new Error(data?.error || "Failed to fetch assessments");
       const ids = Array.isArray(data?.quizIds) ? (data.quizIds as string[]) : [];
       setFetchedQuizIds(ids);
-      const quizTitleMap: Record<string, { title: string }> = {} as any;
+      const quizTitleMap: Record<string, { title: string }> = {};
       if (Array.isArray(data?.quizzes)) {
         for (const q of data.quizzes as Array<{ id: string; title: string }>) {
           if (q?.id) quizTitleMap[q.id] = { title: q.title };
@@ -303,7 +304,7 @@ export default function Home() {
       setPhase("fetched");
     } catch (e: unknown) {
       console.error(e);
-      const msg = typeof e === "object" && e && "message" in e ? String((e as any).message) : "Failed to fetch assessments";
+      const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: string }).message) : "Failed to fetch assessments";
       setError(msg);
     } finally {
       setFetchingAssessments(false);

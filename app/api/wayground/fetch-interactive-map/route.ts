@@ -52,10 +52,10 @@ export async function POST() {
 
         // Common shapes to look for
         const anyObj = obj as Record<string, unknown>;
-        const q = (anyObj as any).quiz || anyObj;
-        const type = (q as any)?.type || (anyObj as any)?.activityType;
-        const id = (q as any)?._id || (q as any)?.id || (anyObj as any)?.quizId || (anyObj as any)?._id || (anyObj as any)?.id;
-        const dV = (q as any)?.draftVersion || (anyObj as any)?.draftVersion || null;
+        const q = (anyObj["quiz"] as Record<string, unknown> | undefined) || anyObj;
+        const type = (q as Record<string, unknown>)["type"] || anyObj["activityType"];
+        const id = (q as Record<string, unknown>)["_id"] || (q as Record<string, unknown>)["id"] || anyObj["quizId"] || anyObj["_id"] || anyObj["id"];
+        const dV = (q as Record<string, unknown>)["draftVersion"] || anyObj["draftVersion"] || null;
         if (typeof id === "string" && /^[a-f0-9]{24}$/i.test(id) && (type === "video-quiz")) {
           if (!candidates.has(id)) candidates.set(id, typeof dV === "string" ? dV : null);
         }
@@ -69,7 +69,8 @@ export async function POST() {
 
       // Heuristic stop: if this page added nothing, or page smaller than requested
       // Try to read hits length if available
-      const hitsLen = (pageRes as any)?.json?.hits?.length as number | undefined;
+      type PageJson = { hits?: unknown[] };
+      const hitsLen = (pageRes.json as PageJson)?.hits?.length as number | undefined;
       if (hitsLen !== undefined && hitsLen < size) break;
     }
 
