@@ -26,43 +26,38 @@ export async function POST(request: Request) {
     const results: Record<string, string | null> = {};
     const versions: Record<string, string | null> = {};
     
-    // Process in batches of 10 to avoid timeout and rate limiting
-    const BATCH_SIZE = 10;
-    const idsToProcess = quizIds.slice(0, 100);
+    // Process sequentially to avoid rate limiting (client batches the calls)
+    const idsToProcess = quizIds.slice(0, 10); // Max 10 IDs per call
     
-    for (let i = 0; i < idsToProcess.length; i += BATCH_SIZE) {
-      const batch = idsToProcess.slice(i, i + BATCH_SIZE);
-      
-      await Promise.all(batch.map(async (id: string) => {
+    for (const id of idsToProcess) {
+      try {
+        const res = await fetch(QUIZ_BASE + encodeURIComponent(id), {
+          headers: {
+            accept: "application/json, text/plain, */*",
+            cookie: useCookie,
+            "x-csrf-token": useCsrf,
+            "x-requested-with": "XMLHttpRequest",
+            "x-component-type": "adminv3",
+            referer: `https://wayground.com/quiz/${id}`,
+            origin: "https://wayground.com",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+          },
+        });
+        const text = await res.text();
         try {
-          const res = await fetch(QUIZ_BASE + encodeURIComponent(id), {
-            headers: {
-              accept: "application/json, text/plain, */*",
-              cookie: useCookie,
-              "x-csrf-token": useCsrf,
-              "x-requested-with": "XMLHttpRequest",
-              "x-component-type": "adminv3",
-              referer: `https://wayground.com/quiz/${id}`,
-              origin: "https://wayground.com",
-              "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-            },
-          });
-          const text = await res.text();
-          try {
-            const data = JSON.parse(text);
-            const key = (data?.data?.draft?.aiCreateMeta?.quizGenKey || data?.draft?.aiCreateMeta?.quizGenKey || data?.aiCreateMeta?.quizGenKey) as string | undefined;
-            results[id] = key ?? null;
-            const version = (data?.data?.quiz?.draftVersion || data?.quiz?.draftVersion) as string | undefined;
-            versions[id] = version ?? null;
-          } catch {
-            results[id] = null;
-            versions[id] = null;
-          }
+          const data = JSON.parse(text);
+          const key = (data?.data?.draft?.aiCreateMeta?.quizGenKey || data?.draft?.aiCreateMeta?.quizGenKey || data?.aiCreateMeta?.quizGenKey) as string | undefined;
+          results[id] = key ?? null;
+          const version = (data?.data?.quiz?.draftVersion || data?.quiz?.draftVersion) as string | undefined;
+          versions[id] = version ?? null;
         } catch {
           results[id] = null;
           versions[id] = null;
         }
-      }));
+      } catch {
+        results[id] = null;
+        versions[id] = null;
+      }
     }
 
     return NextResponse.json({ quizGenKeysById: results, draftVersionById: versions });

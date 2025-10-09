@@ -536,44 +536,41 @@ export default function Home() {
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
       if (ids.length > 0) {
-        // Always use the dedicated quiz-keys endpoint to resolve quizGenKey accurately
-        const res2 = await fetch("/api/wayground/fetch-quiz-keys", {
-          method: "POST",
-          headers: { "content-type": "application/json", ...cookieHeader() },
-          body: JSON.stringify({ quizIds: ids }),
-        });
-        const data2 = await res2.json();
-        if (res2.ok && data2?.quizGenKeysById) {
-          const keyed: Record<string, { title: string; quizGenKey?: string | null }> = {};
-          for (const [id, key] of Object.entries<string | null>(data2.quizGenKeysById)) {
-            const existing = quizTitleMap[id] || {};
-            keyed[id] = { title: existing.title || "", quizGenKey: key };
-          }
-          setQuizMetaById((prev) => ({ ...prev, ...keyed }));
-          if (data2?.draftVersionById) setDraftVersionById(data2.draftVersionById as Record<string, string | null>);
-
-          // Retry once for any null keys by re-calling the endpoint with just the null IDs
-          const nullIds = Object.entries<string | null>(data2.quizGenKeysById).filter(([, v]) => !v).map(([k]) => k);
-          if (nullIds.length > 0) {
-            try {
-              const r3 = await fetch("/api/wayground/fetch-quiz-keys", {
-                method: "POST",
-                headers: { "content-type": "application/json", ...cookieHeader() },
-                body: JSON.stringify({ quizIds: nullIds }),
-              });
-              const d3 = await r3.json();
-              if (r3.ok && d3?.quizGenKeysById) {
-                const patch: Record<string, { title: string; quizGenKey?: string | null }> = {};
-                for (const [id, key] of Object.entries<string | null>(d3.quizGenKeysById)) {
-                  const existing = quizTitleMap[id] || {};
-                  patch[id] = { title: existing.title || "", quizGenKey: key };
-                }
-                setQuizMetaById((prev) => ({ ...prev, ...patch }));
-                if (d3?.draftVersionById) setDraftVersionById((prev) => ({ ...prev, ...d3.draftVersionById as Record<string, string | null> }));
-              }
-            } catch {}
+        // Process in batches of 10 with 3 second delay between API calls
+        const BATCH_SIZE = 10;
+        const allKeys: Record<string, string | null> = {};
+        const allVersions: Record<string, string | null> = {};
+        
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const batch = ids.slice(i, i + BATCH_SIZE);
+          
+          try {
+            const res2 = await fetch("/api/wayground/fetch-quiz-keys", {
+              method: "POST",
+              headers: { "content-type": "application/json", ...cookieHeader() },
+              body: JSON.stringify({ quizIds: batch }),
+            });
+            const data2 = await res2.json();
+            if (res2.ok && data2?.quizGenKeysById) {
+              Object.assign(allKeys, data2.quizGenKeysById);
+              if (data2?.draftVersionById) Object.assign(allVersions, data2.draftVersionById);
+            }
+          } catch {}
+          
+          // Wait 3 seconds before next batch (except for last batch)
+          if (i + BATCH_SIZE < ids.length) {
+            await new Promise(resolve => setTimeout(resolve, 3000));
           }
         }
+        
+        // Update state with all collected keys
+        const keyed: Record<string, { title: string; quizGenKey?: string | null }> = {};
+        for (const [id, key] of Object.entries<string | null>(allKeys)) {
+          const existing = quizTitleMap[id] || {};
+          keyed[id] = { title: existing.title || "", quizGenKey: key };
+        }
+        setQuizMetaById((prev) => ({ ...prev, ...keyed }));
+        if (Object.keys(allVersions).length > 0) setDraftVersionById(allVersions);
       }
       setPhase("fetched");
     } catch (e: unknown) {
