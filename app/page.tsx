@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -69,6 +69,38 @@ export default function Home() {
   const [password, setPassword] = useState<string>("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Auto-login on component mount to get fresh cookies
+  useEffect(() => {
+    async function autoLogin() {
+      try {
+        const res = await fetch("/api/wayground/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ 
+            username: "margaret.1759843072426@qtility.com", 
+            password: "9i9]KDCNb[" 
+          }),
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok && data.success && data.cookies) {
+          // Store cookies in localStorage
+          if (typeof window !== "undefined") {
+            localStorage.setItem("waygroundCookie", data.cookies);
+          }
+          console.log("Auto-login successful - fresh cookies loaded");
+        } else {
+          console.error("Auto-login failed:", data.error);
+        }
+      } catch (err) {
+        console.error("Auto-login error:", err);
+      }
+    }
+    
+    autoLogin();
+  }, []); // Empty dependency array - runs once on mount
 
   function buildAssessmentPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
     const pairs: Array<{ quizId: string; draftVersion: string }> = [];
