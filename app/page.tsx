@@ -112,22 +112,97 @@ export default function Home() {
     const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST", headers: cookieHeader() });
     const data = await res.json();
     if (res.ok && Array.isArray(data?.interactive)) {
-      const setMap: Record<string, boolean> = {};
-      const infoMap: Record<string, { quizId: string; draftVersion: string }> = {};
-      const metaMap: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
-      for (const it of data.interactive as Array<{ quizId: string; title: string; videoId: string; draftVersion?: string | null }>) {
-        setMap[it.videoId] = true;
-        if (it.draftVersion) {
-          infoMap[it.videoId] = { quizId: it.quizId, draftVersion: it.draftVersion };
-          metaMap[it.videoId] = { quizId: it.quizId, draftVersion: it.draftVersion, title: it.title };
+      const allIVs = data.interactive as Array<{ quizId: string; draftVersion?: string | null; createdAt?: string }>;
+      
+      // Filter for IVs created in the last 5 minutes
+      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+      const recentIVs = allIVs.filter(iv => {
+        if (!iv.createdAt) return false;
+        const createdTime = new Date(iv.createdAt).getTime();
+        return createdTime >= fiveMinutesAgo;
+      });
+      
+      console.log(`Found ${allIVs.length} total IVs, ${recentIVs.length} created in last 5 minutes`);
+      
+      if (recentIVs.length > 0) {
+        // Fetch video IDs for recent IVs with exponential backoff
+        const videoIdMap: Record<string, string> = {}; // quizId -> videoId
+        let consecutiveRateLimits = 0;
+        const baseDelay = 8000;
+        
+        for (let i = 0; i < recentIVs.length; i++) {
+          const iv = recentIVs[i];
+          let retryCount = 0;
+          let success = false;
+          
+          while (!success && retryCount < 3) {
+            try {
+              const res2 = await fetch("/api/wayground/fetch-iv-video-ids", {
+                method: "POST",
+                headers: { "content-type": "application/json", ...cookieHeader() },
+                body: JSON.stringify({ quizIds: [iv.quizId] }),
+              });
+              const data2 = await res2.json();
+              
+              // Check if rate limited
+              if (data2?.error?.includes?.("TOO_MANY_REQUESTS") || data2?.error?.includes?.("rateLimiter")) {
+                consecutiveRateLimits++;
+                const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount));
+                console.log(`Rate limited on IV ${iv.quizId}, waiting ${retryDelay}ms before retry ${retryCount + 1}/3`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                retryCount++;
+                continue;
+              }
+              
+              if (res2.ok && data2?.videoIdsById) {
+                const videoId = data2.videoIdsById[iv.quizId];
+                if (videoId) {
+                  videoIdMap[iv.quizId] = videoId;
+                }
+                consecutiveRateLimits = 0;
+              }
+              success = true;
+            } catch (err) {
+              console.error(`Failed to fetch video ID for IV ${iv.quizId}:`, err);
+              retryCount++;
+              if (retryCount < 3) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+              }
+            }
+          }
+          
+          // Adaptive delay
+          let delay = baseDelay + (consecutiveRateLimits * 2000);
+          delay = Math.min(delay, 30000);
+          
+          if (i < recentIVs.length - 1) {
+            console.log(`Waiting ${delay}ms before next IV request (consecutive rate limits: ${consecutiveRateLimits})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
         }
+        
+        // Update state with fetched video IDs
+        const setMap: Record<string, boolean> = {};
+        const infoMap: Record<string, { quizId: string; draftVersion: string }> = {};
+        const metaMap: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
+        
+        for (const [quizId, videoId] of Object.entries(videoIdMap)) {
+          setMap[videoId] = true;
+          const iv = recentIVs.find(i => i.quizId === quizId);
+          if (iv?.draftVersion) {
+            infoMap[videoId] = { quizId, draftVersion: iv.draftVersion };
+            metaMap[videoId] = { quizId, draftVersion: iv.draftVersion, title: "" };
+          }
+        }
+        
+        setInteractiveCreatedById((prev) => ({ ...prev, ...setMap }));
+        setInteractiveInfoByVideoId((prev) => ({ ...prev, ...infoMap }));
+        setInteractiveMetaByVideoId((prev) => ({ ...prev, ...metaMap }));
       }
-      setInteractiveCreatedById((prev) => ({ ...prev, ...setMap }));
-      setInteractiveInfoByVideoId((prev) => ({ ...prev, ...infoMap }));
-      setInteractiveMetaByVideoId((prev) => ({ ...prev, ...metaMap }));
-      // compute IV match count
+      
+      // Compute IV match count
       let matched = 0;
-      for (const it of items) if (setMap[it.id] || interactiveCreatedById[it.id]) matched += 1;
+      for (const it of items) if (interactiveCreatedById[it.id]) matched += 1;
       setIvMatchedCount(matched);
     }
   }
@@ -612,8 +687,22 @@ export default function Home() {
           const existing = quizTitleMap[id] || {};
           keyed[id] = { title: existing.title || "", quizGenKey: key };
         }
-        setQuizMetaById((prev) => ({ ...prev, ...keyed }));
+        setQuizMetaById((prev) => {
+          const updated = { ...prev, ...keyed };
+          // Update assessment match count after state is set
+          setTimeout(() => {
+            const count = computeAssessmentMatchCount();
+            setAssessmentMatchedCount(count);
+          }, 0);
+          return updated;
+        });
         if (Object.keys(allVersions).length > 0) setDraftVersionById(allVersions);
+      } else {
+        // Even if no recent quizzes, update the count
+        setTimeout(() => {
+          const count = computeAssessmentMatchCount();
+          setAssessmentMatchedCount(count);
+        }, 0);
       }
       setPhase("fetched");
     } catch (e: unknown) {

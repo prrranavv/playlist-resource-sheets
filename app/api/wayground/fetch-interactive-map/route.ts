@@ -18,8 +18,8 @@ export async function POST(request: Request) {
     const headerCookie = request.headers.get("x-wayground-cookie") || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE;
     const headerCsrf = request.headers.get("x-wayground-csrf");
     const csrfToken = headerCsrf || CSRF || "Y1mHRsKn-QS9Y7fwqLbzCKBIWnSB-kd6QSWQ";
-    // Step 1: paginate through drafts with activityTypes:["video-quiz"] and collect quiz ids + draft versions robustly
-    const candidates = new Map<string, string | null>(); // quizId -> draftVersion
+    // Step 1: paginate through drafts with activityTypes:["video-quiz"] and collect quiz ids + draft versions + createdAt
+    const candidates = new Map<string, { draftVersion: string | null; createdAt?: string }>(); // quizId -> {draftVersion, createdAt}
     let from = 0;
     const size = 100;
     let pagesFetched = 0;
@@ -59,8 +59,14 @@ export async function POST(request: Request) {
         const type = (q as Record<string, unknown>)["type"] || anyObj["activityType"];
         const id = (q as Record<string, unknown>)["_id"] || (q as Record<string, unknown>)["id"] || anyObj["quizId"] || anyObj["_id"] || anyObj["id"];
         const dV = (q as Record<string, unknown>)["draftVersion"] || anyObj["draftVersion"] || null;
+        const createdAt = (q as Record<string, unknown>)["createdAt"] || anyObj["createdAt"];
         if (typeof id === "string" && /^[a-f0-9]{24}$/i.test(id) && (type === "video-quiz")) {
-          if (!candidates.has(id)) candidates.set(id, typeof dV === "string" ? dV : null);
+          if (!candidates.has(id)) {
+            candidates.set(id, { 
+              draftVersion: typeof dV === "string" ? dV : null,
+              createdAt: typeof createdAt === "string" ? createdAt : undefined
+            });
+          }
         }
         for (const v of Object.values(anyObj)) collect(v);
       };
@@ -77,38 +83,14 @@ export async function POST(request: Request) {
       if (hitsLen !== undefined && hitsLen < size) break;
     }
 
-    const quizIds = Array.from(candidates.keys());
-
-    // Step 2: fetch each quiz json and extract youtube videoId
-    const interactive: Array<{ quizId: string; title: string; videoId: string; draftVersion?: string | null }> = [];
-    const idsToProcess = quizIds.slice(0, 100);
-    const BATCH = 10;
-    for (let i = 0; i < idsToProcess.length; i += BATCH) {
-      const group = idsToProcess.slice(i, i + BATCH);
-      await Promise.all(group.map(async (id) => {
-        const res = await fetchJson(QUIZ_BASE + encodeURIComponent(id), {
-          headers: { accept: "application/json, text/plain, */*", cookie: headerCookie },
-        });
-        if (!res.ok || !res.json) return;
-        const data = res.json;
-        const type = data?.data?.quiz?.type || data?.quiz?.type;
-        if (type !== "video-quiz") return;
-        const title = data?.data?.draft?.name || data?.draft?.name || data?.data?.quiz?.name || data?.quiz?.name || "";
-        const draftVersion = data?.data?.quiz?.draftVersion || data?.quiz?.draftVersion || candidates.get(id) || null;
-        const media = data?.data?.draft?.questions?.[0]?.structure?.query?.media?.[0] || data?.draft?.questions?.[0]?.structure?.query?.media?.[0];
-        let videoId = media?.meta?.videoId as string | undefined;
-        const urlStr = media?.url as string | undefined;
-        if (!videoId && urlStr) {
-          try {
-            const u = new URL(urlStr.startsWith("http") ? urlStr : `https://${urlStr}`);
-            const v = u.searchParams.get("v");
-            if (v) videoId = v;
-          } catch {}
-        }
-        if (videoId) interactive.push({ quizId: id, title, videoId, draftVersion });
-      }));
-    }
-    return NextResponse.json({ interactive });
+    // Return IVs with metadata (client will fetch video IDs for recent ones only)
+    const interactive = Array.from(candidates.entries()).map(([quizId, data]) => ({
+      quizId,
+      draftVersion: data.draftVersion,
+      createdAt: data.createdAt
+    }));
+    
+    return NextResponse.json({ interactive: interactive.slice(0, 100) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
