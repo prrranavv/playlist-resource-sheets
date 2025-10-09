@@ -7,10 +7,14 @@ const CSRF = "3xHamJ3szMhUH68u0CggmCSZ9xo";
 
 export async function POST(request: Request) {
   try {
-    const { quizId, draftVersion } = await request.json();
+    const { quizId, draftVersion, cookie: cookieBody, csrf: csrfBody } = await request.json();
     if (!quizId || !draftVersion) {
       return NextResponse.json({ error: "quizId and draftVersion required" }, { status: 400 });
     }
+    const headerCookie = request.headers.get("x-wayground-cookie");
+    const cookieHeader = (typeof cookieBody === "string" && cookieBody.trim()) ? cookieBody.trim() : (headerCookie?.trim() || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE);
+    const headerCsrf = request.headers.get("x-wayground-csrf");
+    const csrfToken = (typeof csrfBody === "string" && csrfBody.trim()) ? csrfBody.trim() : (headerCsrf?.trim() || CSRF);
     const url = `${PUBLISH_BASE}/${encodeURIComponent(quizId)}/version/${encodeURIComponent(draftVersion)}/publish`;
     const res = await fetch(url, {
       method: "POST",
@@ -19,8 +23,8 @@ export async function POST(request: Request) {
         accept: "application/json, text/plain, */*",
         origin: "https://wayground.com",
         referer: `https://wayground.com/admin/quiz/${encodeURIComponent(quizId)}/edit`,
-        cookie: HARDCODED_COOKIE,
-        "x-csrf-token": CSRF,
+        cookie: cookieHeader,
+        "x-csrf-token": csrfToken,
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
         priority: "u=1, i",
         "sec-fetch-mode": "cors",

@@ -8,10 +8,14 @@ const CSRF = "D9cIt6TyWlby79j_ngnsV7mnbfU";
 
 export async function POST(request: Request) {
   try {
-    const { quizId } = await request.json();
+    const { quizId, cookie: cookieBody, csrf: csrfBody } = await request.json();
     if (!quizId) {
       return NextResponse.json({ error: "quizId required" }, { status: 400 });
     }
+    const headerCookie = request.headers.get("x-wayground-cookie");
+    const cookieHeader = (typeof cookieBody === "string" && cookieBody.trim()) ? cookieBody.trim() : (headerCookie?.trim() || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE);
+    const headerCsrf = request.headers.get("x-wayground-csrf");
+    const csrfToken = (typeof csrfBody === "string" && csrfBody.trim()) ? csrfBody.trim() : (headerCsrf?.trim() || CSRF);
     const url = `${QUICK_EDIT_BASE}/${encodeURIComponent(quizId)}/quickEdit`;
     const payload = {
       modifications: [
@@ -30,8 +34,8 @@ export async function POST(request: Request) {
         accept: "application/json, text/plain, */*",
         origin: "https://wayground.com",
         referer: `https://wayground.com/admin/quiz/${quizId}`,
-        cookie: HARDCODED_COOKIE,
-        "x-csrf-token": CSRF,
+        cookie: cookieHeader,
+        "x-csrf-token": csrfToken,
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
       },
       body: JSON.stringify(payload),

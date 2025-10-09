@@ -7,7 +7,8 @@ const HARDCODED_COOKIE = `quizizz_uid=df0761ef-a8fd-4ef4-ad92-e1011b55c1a6; QUIZ
 
 export async function POST(request: Request) {
   try {
-    const { quizIds } = await request.json();
+    const headerCookie = request.headers.get("x-wayground-cookie") || undefined;
+    const { quizIds, cookieOverride } = await request.json();
     if (!Array.isArray(quizIds) || quizIds.length === 0) {
       return NextResponse.json({ error: "quizIds array required" }, { status: 400 });
     }
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
       const res = await fetch(QUIZ_BASE + encodeURIComponent(id), {
         headers: {
           accept: "application/json, text/plain, */*",
-          cookie: HARDCODED_COOKIE,
+          cookie: (typeof headerCookie === "string" && headerCookie.trim()) ? headerCookie.trim() : ((typeof cookieOverride === "string" && cookieOverride.trim()) ? cookieOverride.trim() : (process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE)),
           "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
         },
       });
@@ -36,10 +37,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ quizGenKeysById: results, draftVersionById: versions });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? "Unknown error" }, { status: 500 });
   }
 }
-
-

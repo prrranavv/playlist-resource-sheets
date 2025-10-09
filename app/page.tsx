@@ -64,6 +64,8 @@ export default function Home() {
   const [assessmentMatchedCount, setAssessmentMatchedCount] = useState<number>(0);
   const [ivMatchedCount, setIvMatchedCount] = useState<number>(0);
   const [readyToPublish, setReadyToPublish] = useState(false);
+  const [cookieOpen, setCookieOpen] = useState(false);
+  const [cookieInput, setCookieInput] = useState<string>("");
 
   function buildAssessmentPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
     const pairs: Array<{ quizId: string; draftVersion: string }> = [];
@@ -82,18 +84,32 @@ export default function Home() {
   function pause(ms: number) { return new Promise<void>((res) => setTimeout(res, ms)); }
 
   function computeAssessmentMatchCount(): number {
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
     let matched = 0;
     for (const it of items) {
       const vKey = quizKeyById[it.id];
-      if (!vKey) continue;
-      const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
-      if (entry) matched += 1;
+      let isMatch = false;
+      if (vKey) {
+        const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
+        if (entry) isMatch = true;
+      }
+      if (!isMatch) {
+        // Fallback: title match if quizGenKey not available yet
+        const itNorm = normalize(it.title);
+        for (const meta of Object.values(quizMetaById)) {
+          if (meta?.title && normalize(meta.title) === itNorm) {
+            isMatch = true;
+            break;
+          }
+        }
+      }
+      if (isMatch) matched += 1;
     }
     return matched;
   }
 
   async function fetchInteractivesAndUpdate() {
-    const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST" });
+    const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST", headers: cookieHeader() });
     const data = await res.json();
     if (res.ok && Array.isArray(data?.interactive)) {
       const setMap: Record<string, boolean> = {};
@@ -115,25 +131,94 @@ export default function Home() {
       setIvMatchedCount(matched);
     }
   }
+  function cookieHeader(): Record<string, string> {
+    const cookie = (typeof window !== "undefined") ? (localStorage.getItem("waygroundCookie") || "") : "";
+    return cookie ? { "x-wayground-cookie": cookie } : {};
+  }
+
+  function extractCookieFromText(text: string): string | null {
+    if (!text) return null;
+    // -b 'cookie-string' or --cookie "cookie-string"
+    const m1 = text.match(/(?:\s|^)\-b\s+['\"]([^'\"\n]+)['\"]/i);
+    if (m1?.[1]) return m1[1];
+    const m2 = text.match(/(?:\s|^)\-\-cookie\s+['\"]([^'\"\n]+)['\"]/i);
+    if (m2?.[1]) return m2[1];
+    // -H 'cookie: ...' or -H "Cookie: ..."
+    const m3 = text.match(/\-H\s+['\"][Cc]ookie:\s*([^'\"\n]+)['\"]/i);
+    if (m3?.[1]) return m3[1];
+    // Any standalone line starting with Cookie:
+    const m4 = text.match(/^[Cc]ookie:\s*(.+)$/im);
+    if (m4?.[1]) return m4[1].trim();
+    return null;
+  }
+
+  function openCookieModal() {
+    const existing = (typeof window !== "undefined") ? (localStorage.getItem("waygroundCookie") || "") : "";
+    setCookieInput(existing);
+    setCookieOpen(true);
+  }
+
+  function saveCookie() {
+    let toStore = cookieInput || "";
+    const extracted = extractCookieFromText(toStore);
+    if (extracted) toStore = extracted;
+    if (typeof window !== "undefined") localStorage.setItem("waygroundCookie", toStore);
+    setCookieOpen(false);
+  }
+
 
   async function createResources() {
     if (items.length === 0) return;
     setReadyToPublish(false);
+    // initialize progress for both
+    setBulkProgress({ done: 0, total: items.length });
+    setInteractiveProgress({ done: 0, total: items.length });
+    setError(null);
+
     setCreateFlowStatus("creatingA");
-    await createAssessmentsBulk();
+    setBulkCreating(true);
+
+    const assessmentWorker = async (it: PlaylistItem) => {
+      if (quizKeyById[it.id]) return; // skip if already created
+      await createAssessment(it, false);
+    };
+    const assessmentInc = () => setBulkProgress((p) => ({ ...p, done: Math.min(p.done + 1, p.total) }));
+
+    // Create assessments sequentially
+    for (const it of items) {
+      await assessmentWorker(it);
+      assessmentInc();
+    }
+    setBulkCreating(false);
+
+    // Wait 100s after assessments
     setCreateFlowStatus("waitingA");
-    startWaitCountdown(90);
-    await pause(90_000);
+    startWaitCountdown(100);
+    await pause(100_000);
+
+    // Fetch assessments
     setCreateFlowStatus("fetchingA");
     await fetchAssessments();
-    setAssessmentMatchedCount(computeAssessmentMatchCount());
-    setCreateFlowStatus("doneA");
-    await pause(5_000);
+    const aCount = computeAssessmentMatchCount();
+    setAssessmentMatchedCount(aCount);
+
+    // Create IVs sequentially
     setCreateFlowStatus("creatingIV");
-    await createInteractivesBulk();
+    setBulkCreatingInteractive(true);
+    for (const it of items) {
+      if (!interactiveCreatedById[it.id]) {
+        await createInteractive(it);
+      }
+      setInteractiveProgress((p) => ({ ...p, done: Math.min(p.done + 1, p.total) }));
+    }
+    setBulkCreatingInteractive(false);
+
+    // Wait 100s after IVs
     setCreateFlowStatus("waitingIV");
-    // countdown already started inside createInteractivesBulk to 90s
-    await pause(90_000);
+    startInteractiveWaitCountdown(100);
+    await pause(100_000);
+
+    // Fetch IVs
     setCreateFlowStatus("fetchingIV");
     await fetchInteractivesAndUpdate();
     setCreateFlowStatus("doneIV");
@@ -326,7 +411,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/wayground/create-assessment", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...cookieHeader() },
         body: JSON.stringify({
           videoUrl: item.videoUrl,
           grade,
@@ -383,7 +468,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/wayground/create-interactive", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...cookieHeader() },
         body: JSON.stringify({
           videoUrl: item.videoUrl,
           grade,
@@ -434,7 +519,7 @@ export default function Home() {
     setFetchingAssessments(true);
     setError(null);
     try {
-      const res = await fetch("/api/wayground/fetch-assessments", { method: "POST" });
+      const res = await fetch("/api/wayground/fetch-assessments", { method: "POST", headers: cookieHeader() });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to fetch assessments");
       const ids = Array.isArray(data?.quizIds) ? (data.quizIds as string[]) : [];
@@ -448,9 +533,10 @@ export default function Home() {
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
       if (ids.length > 0) {
+        // Always use the dedicated quiz-keys endpoint to resolve quizGenKey accurately
         const res2 = await fetch("/api/wayground/fetch-quiz-keys", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...cookieHeader() },
           body: JSON.stringify({ quizIds: ids }),
         });
         const data2 = await res2.json();
@@ -462,6 +548,28 @@ export default function Home() {
           }
           setQuizMetaById((prev) => ({ ...prev, ...keyed }));
           if (data2?.draftVersionById) setDraftVersionById(data2.draftVersionById as Record<string, string | null>);
+
+          // Retry once for any null keys by re-calling the endpoint with just the null IDs
+          const nullIds = Object.entries<string | null>(data2.quizGenKeysById).filter(([, v]) => !v).map(([k]) => k);
+          if (nullIds.length > 0) {
+            try {
+              const r3 = await fetch("/api/wayground/fetch-quiz-keys", {
+                method: "POST",
+                headers: { "content-type": "application/json", ...cookieHeader() },
+                body: JSON.stringify({ quizIds: nullIds }),
+              });
+              const d3 = await r3.json();
+              if (r3.ok && d3?.quizGenKeysById) {
+                const patch: Record<string, { title: string; quizGenKey?: string | null }> = {};
+                for (const [id, key] of Object.entries<string | null>(d3.quizGenKeysById)) {
+                  const existing = quizTitleMap[id] || {};
+                  patch[id] = { title: existing.title || "", quizGenKey: key };
+                }
+                setQuizMetaById((prev) => ({ ...prev, ...patch }));
+                if (d3?.draftVersionById) setDraftVersionById((prev) => ({ ...prev, ...d3.draftVersionById as Record<string, string | null> }));
+              }
+            } catch {}
+          }
         }
       }
       setPhase("fetched");
@@ -491,6 +599,7 @@ export default function Home() {
               <Button onClick={fetchPlaylist} disabled={!input || loading}>
                 {loading ? "Loading..." : "Show Videos"}
               </Button>
+              <Button variant="secondary" onClick={openCookieModal}>Wayground Cookie</Button>
               {/* Publish IVs button removed per request */}
             </div>
             {error && (
@@ -528,12 +637,9 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap items-center gap-3 mt-3">
               <Button size="sm" variant="default" onClick={createResources} disabled={items.length === 0 || !(createFlowStatus === "idle" || createFlowStatus === "doneIV") }>
-                {createFlowStatus === "creatingA" ? `Creating assessments (${bulkProgress.done}/${bulkProgress.total})` :
-                 createFlowStatus === "waitingA" ? `Waiting ${waitRemaining}s` :
-                 createFlowStatus === "fetchingA" ? "Fetching assessments…" :
-                 createFlowStatus === "creatingIV" ? `Creating IVs (${interactiveProgress.done}/${interactiveProgress.total})` :
-                 createFlowStatus === "waitingIV" ? `Waiting ${interactiveWaitRemaining}s` :
-                 createFlowStatus === "fetchingIV" ? "Fetching IVs…" :
+                {createFlowStatus === "creatingA" || createFlowStatus === "creatingIV" ? "Creating resources…" :
+                 createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
+                 createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
                  "Create resources"}
               </Button>
               <Button size="sm" variant="secondary" onClick={publishResources} disabled={!readyToPublish || publishing || publishingIVs}>
@@ -547,6 +653,19 @@ export default function Home() {
             {/* Removed per request: do not show repeated assessments created text here */}
           </CardContent>
         </Card>
+
+        {cookieOpen && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="w-full max-w-xl rounded-md bg-white p-4 space-y-3">
+              <h3 className="text-base font-medium">Paste Wayground Cookie</h3>
+              <textarea className="w-full h-40 border rounded p-2 text-sm" value={cookieInput} onChange={(e) => setCookieInput(e.target.value)} placeholder="Paste the entire Cookie string here" />
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setCookieOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={saveCookie}>Save</Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {items.length > 0 && (
           <div className="space-y-2">

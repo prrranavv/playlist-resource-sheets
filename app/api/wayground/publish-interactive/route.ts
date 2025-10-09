@@ -8,12 +8,17 @@ const CURL_COOKIE = `quizizz_uid=df0761ef-a8fd-4ef4-ad92-e1011b55c1a6; QUIZIZZ_E
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { quizId, draftVersion } = body ?? {};
+    const { quizId, draftVersion, cookie: cookieBody, csrf: csrfBody } = body ?? {};
     if (!quizId || !draftVersion) {
       return NextResponse.json({ error: "Missing quizId or draftVersion" }, { status: 400 });
     }
 
     const url = `${BASE}/${encodeURIComponent(quizId)}/version/${encodeURIComponent(draftVersion)}/publish`;
+
+    const headerCookie = request.headers.get("x-wayground-cookie");
+    const cookieHeader = (typeof cookieBody === "string" && cookieBody.trim()) ? cookieBody.trim() : (headerCookie?.trim() || process.env.WAYGROUND_COOKIE || CURL_COOKIE);
+    const headerCsrf = request.headers.get("x-wayground-csrf");
+    const csrfToken = (typeof csrfBody === "string" && csrfBody.trim()) ? csrfBody.trim() : (headerCsrf?.trim() || "Q5m43k3onEiL-1cWB9kelvGmjfk");
 
     const res = await fetch(url, {
       method: "POST",
@@ -23,7 +28,7 @@ export async function POST(request: Request) {
         baggage:
           "sentry-environment=production,sentry-release=9930e31d5c914e6eb7adbbca6908f09570c619d1,sentry-public_key=f4055af1be6347b5a3b645683a6b50ff,sentry-trace_id=541decc21e3d43308327dd9e086a4678,sentry-sample_rate=0.05,sentry-transaction=admin-quiz-quizId-question-questionId-edit,sentry-sampled=false",
         "content-type": "application/json",
-        cookie: CURL_COOKIE,
+        cookie: cookieHeader,
         origin: "https://wayground.com",
         priority: "u=1, i",
         referer: `https://wayground.com/admin/quiz/${encodeURIComponent(quizId)}/question/_/edit`,
@@ -37,7 +42,7 @@ export async function POST(request: Request) {
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
         "x-amzn-trace-id": "Root=1-68e5fe52-f863ea635c48eda3237843e6;Parent=6c9f7e226b19694f;Sampled=1",
         "x-component-type": "adminv3",
-        "x-csrf-token": "Q5m43k3onEiL-1cWB9kelvGmjfk",
+        "x-csrf-token": csrfToken,
         "x-q-request-context-path": "QuizPage",
         "x-q-traceid": "Root=1-68e5fe52-f863ea635c48eda3237843e6;Parent=6c9f7e226b19694f;Sampled=1",
       },
