@@ -540,7 +540,7 @@ export default function Home() {
         const allKeys: Record<string, string | null> = {};
         const allVersions: Record<string, string | null> = {};
         let consecutiveRateLimits = 0;
-        let baseDelay = 8000; // Start with 8 seconds
+        const baseDelay = 8000; // Start with 8 seconds
         
         for (let i = 0; i < ids.length; i++) {
           const quizId = ids[i];
