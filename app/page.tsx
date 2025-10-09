@@ -69,6 +69,7 @@ export default function Home() {
   const [password, setPassword] = useState<string>("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Auto-login on component mount to get fresh cookies
   useEffect(() => {
@@ -794,13 +795,18 @@ export default function Home() {
       <div className="mx-auto max-w-4xl space-y-6">
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex items-center gap-3">
-              <img 
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/2560px-YouTube_full-color_icon_%282017%29.svg.png" 
-                alt="YouTube" 
-                className="h-8 w-auto"
-              />
-              <h2 className="text-xl font-semibold leading-none">Create Wayground resources from YouTube playlists</h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img 
+                  src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/2560px-YouTube_full-color_icon_%282017%29.svg.png" 
+                  alt="YouTube" 
+                  className="h-8 w-auto"
+                />
+                <h2 className="text-xl font-semibold leading-none">Create Wayground resources from YouTube playlists!</h2>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setHelpOpen(true)}>
+                How to use
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -903,6 +909,82 @@ export default function Home() {
                 </Button>
                 <Button size="sm" onClick={handleLogin} disabled={authLoading}>
                   {authLoading ? "Logging in..." : "Login"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {helpOpen && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl rounded-md bg-white p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">How to use</h3>
+                <button 
+                  onClick={() => setHelpOpen(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+              <ol className="space-y-4 text-sm">
+                <li className="flex gap-3">
+                  <span className="font-semibold shrink-0">1.</span>
+                  <div>
+                    <strong>Enter the YouTube playlist link/ID.</strong> It will look something like:
+                    <ul className="mt-2 space-y-1 text-muted-foreground">
+                      <li>• <code className="bg-gray-100 px-2 py-0.5 rounded text-xs">https://www.youtube.com/watch?v=-KE7jTXwNYs&list=PLSQl0a2vh4HCKeX3g-Mj5wXS0nfDeDSGS</code> (link)</li>
+                      <li>• <code className="bg-gray-100 px-2 py-0.5 rounded text-xs">PLSQl0a2vh4HCKeX3g-Mj5wXS0nfDeDSGS</code> (ID)</li>
+                    </ul>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="font-semibold shrink-0">2.</span>
+                  <div>
+                    <strong>Click on Show videos.</strong> This should show all the YouTube videos in that playlist.
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="font-semibold shrink-0">3.</span>
+                  <div>
+                    <strong>Select the Subject and Grade.</strong>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="font-semibold shrink-0">4.</span>
+                  <div>
+                    <strong>Click on Create resources.</strong> This will take around ~4-5 minutes to create resources. <span className="text-red-600 font-medium">Wait, and don&apos;t refresh or close the tab.</span>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="font-semibold shrink-0">5.</span>
+                  <div>
+                    <strong>Once done, see if all the videos have Assessments and Interactive Videos created.</strong>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="font-semibold shrink-0">6.</span>
+                  <div>
+                    <strong>All set? Click on Publish resources & Export Sheet.</strong>
+                  </div>
+                </li>
+              </ol>
+              <div className="pt-4 border-t">
+                <p className="text-sm text-muted-foreground">
+                  If you run into any issues, ping me on Slack:{" "}
+                  <a 
+                    href="https://quizizz.slack.com/archives/D06PSV64YCW" 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    https://quizizz.slack.com/archives/D06PSV64YCW
+                  </a>
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={() => setHelpOpen(false)}>
+                  Got it!
                 </Button>
               </div>
             </div>
