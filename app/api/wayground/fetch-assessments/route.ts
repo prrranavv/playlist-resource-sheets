@@ -91,7 +91,7 @@ export async function POST() {
     });
 
     const text = await res.text();
-    let data: any = null;
+    let data: unknown = null;
     try {
       data = JSON.parse(text);
     } catch {

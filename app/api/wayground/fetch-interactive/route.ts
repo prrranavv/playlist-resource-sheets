@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     });
 
     const text = await res.text();
-    let data: any;
+    let data: unknown;
     try { data = JSON.parse(text); } catch { return new NextResponse(text, { status: res.status }); }
 
     const interactive: Array<{ quizId: string; title: string; draftVersion?: string | null }> = [];
@@ -39,17 +39,17 @@ export async function POST(request: Request) {
       if (!obj) return;
       if (Array.isArray(obj)) { obj.forEach(collect); return; }
       if (typeof obj !== "object") return;
-      const any = obj as Record<string, unknown>;
-      const quiz = (any["quiz"] as Record<string, unknown> | undefined) || any;
-      const type = quiz["type"] || any["activityType"];
-      const id = (quiz["_id"] || quiz["id"] || any["quizId"] || any["_id"] || any["id"]) as string | undefined;
-      const title = (any?.draft as any)?.name || (quiz as any)?.name || (any["name"] as string | undefined) || (any["title"] as string | undefined) || "";
-      const draftVersion = (quiz as any)?.draftVersion || (any as any)?.draftVersion || null;
+      const anyObj = obj as Record<string, unknown>;
+      const quiz = (anyObj["quiz"] as Record<string, unknown> | undefined) || anyObj;
+      const type = quiz["type"] || anyObj["activityType"];
+      const id = (quiz["_id"] || quiz["id"] || anyObj["quizId"] || anyObj["_id"] || anyObj["id"]) as string | undefined;
+      const title = ((anyObj?.draft as Record<string, unknown>)?.name as string | undefined) || ((quiz as Record<string, unknown>)?.name as string | undefined) || (anyObj["name"] as string | undefined) || (anyObj["title"] as string | undefined) || "";
+      const draftVersion = ((quiz as Record<string, unknown>)?.draftVersion as string | undefined) || ((anyObj as Record<string, unknown>)?.draftVersion as string | undefined) || null;
       if (type === "video-quiz" && id && /^[a-f0-9]{24}$/i.test(id) && !seen.has(id)) {
         seen.add(id);
         interactive.push({ quizId: id, title: title || "", draftVersion: typeof draftVersion === "string" ? draftVersion : null });
       }
-      for (const v of Object.values(any)) collect(v);
+      for (const v of Object.values(anyObj)) collect(v);
     };
     collect(data);
 

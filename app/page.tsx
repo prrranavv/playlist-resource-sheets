@@ -26,27 +26,27 @@ export default function Home() {
   const [channelTitle, setChannelTitle] = useState<string | null>(null);
   const [grade, setGrade] = useState<string>("6");
   const [subject, setSubject] = useState<string>("Science");
-  const [creatingId, setCreatingId] = useState<string | null>(null);
+  const [_creatingId, setCreatingId] = useState<string | null>(null);
   const [quizKeyById, setQuizKeyById] = useState<Record<string, string>>({});
-  const [bulkCreating, setBulkCreating] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
-  const [fetchedQuizIds, setFetchedQuizIds] = useState<string[]>([]);
-  const [fetchingAssessments, setFetchingAssessments] = useState(false);
+  const [_bulkCreating, setBulkCreating] = useState(false);
+  const [_bulkProgress, setBulkProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
+  const [_fetchedQuizIds, setFetchedQuizIds] = useState<string[]>([]);
+  const [_fetchingAssessments, setFetchingAssessments] = useState(false);
   const [quizMetaById, setQuizMetaById] = useState<Record<string, { title: string; quizGenKey?: string | null }>>({});
   const [draftVersionById, setDraftVersionById] = useState<Record<string, string | null>>({});
   const [publishing, setPublishing] = useState(false);
   const [publishProgress, setPublishProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
   const [phase, setPhase] = useState<"idle"|"videos"|"creating"|"waiting"|"can_fetch"|"fetched"|"published">("idle");
   const [waitRemaining, setWaitRemaining] = useState<number>(0);
-  const [publishedDone, setPublishedDone] = useState(false);
-  const [creatingInteractiveId, setCreatingInteractiveId] = useState<string | null>(null);
-  const [bulkCreatingInteractive, setBulkCreatingInteractive] = useState(false);
-  const [interactiveProgress, setInteractiveProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
+  const [_publishedDone, setPublishedDone] = useState(false);
+  const [_creatingInteractiveId, setCreatingInteractiveId] = useState<string | null>(null);
+  const [_bulkCreatingInteractive, setBulkCreatingInteractive] = useState(false);
+  const [_interactiveProgress, setInteractiveProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
   const [interactiveCreatedById, setInteractiveCreatedById] = useState<Record<string, boolean>>({});
   const [interactiveInfoByVideoId, setInteractiveInfoByVideoId] = useState<Record<string, { quizId: string; draftVersion: string }>>({});
   const [interactiveMetaByVideoId, setInteractiveMetaByVideoId] = useState<Record<string, { quizId: string; draftVersion: string; title: string }>>({});
-  const [fetchingInteractive, setFetchingInteractive] = useState(false);
-  const [interactivePhase, setInteractivePhase] = useState<"idle"|"waiting"|"can_fetch">("idle");
+  const [_fetchingInteractive, _setFetchingInteractive] = useState(false);
+  const [_interactivePhase, setInteractivePhase] = useState<"idle"|"waiting"|"can_fetch">("idle");
   const [interactiveWaitRemaining, setInteractiveWaitRemaining] = useState<number>(0);
   const [publishingIVs, setPublishingIVs] = useState(false);
   const [publishIVProgress, setPublishIVProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
@@ -313,30 +313,31 @@ export default function Home() {
     setPublishingIVs(false);
     await exportCsv();
   }
-  async function publishAssessmentsAll() {
-    const pairs = buildAssessmentPublishPairs();
-    if (pairs.length === 0) return;
-    setPublishing(true);
-    setPublishProgress({ done: 0, total: pairs.length });
-    for (const p of pairs) {
-      try {
-        await fetch("/api/wayground/publish-quiz", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(p),
-        });
-        await fetch("/api/wayground/make-public", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ quizId: p.quizId }),
-        });
-      } catch {}
-      setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
-    }
-    setPublishing(false);
-    setPhase("published");
-    setPublishedDone(true);
-  }
+  // Unused for now - kept for future bulk publish feature
+  // async function publishAssessmentsAll() {
+  //   const pairs = buildAssessmentPublishPairs();
+  //   if (pairs.length === 0) return;
+  //   setPublishing(true);
+  //   setPublishProgress({ done: 0, total: pairs.length });
+  //   for (const p of pairs) {
+  //     try {
+  //       await fetch("/api/wayground/publish-quiz", {
+  //         method: "POST",
+  //         headers: { "content-type": "application/json" },
+  //         body: JSON.stringify(p),
+  //       });
+  //       await fetch("/api/wayground/make-public", {
+  //         method: "POST",
+  //         headers: { "content-type": "application/json" },
+  //         body: JSON.stringify({ quizId: p.quizId }),
+  //       });
+  //     } catch {}
+  //     setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
+  //   }
+  //   setPublishing(false);
+  //   setPhase("published");
+  //   setPublishedDone(true);
+  // }
 
   function startInteractiveWaitCountdown(seconds: number = 60) {
     // Always restart to ensure countdown is from the last request
@@ -445,23 +446,24 @@ export default function Home() {
     }
   }
 
-  async function createAssessmentsBulk() {
-    if (items.length === 0) return;
-    setBulkCreating(true);
-    setBulkProgress({ done: 0, total: items.length });
-    setError(null);
-    setPhase("creating");
-    for (const item of items) {
-      if (quizKeyById[item.id]) {
-        setBulkProgress((p) => ({ ...p, done: p.done + 1 }));
-        continue;
-      }
-      await createAssessment(item, false);
-      setBulkProgress((p) => ({ ...p, done: p.done + 1 }));
-    }
-    setBulkCreating(false);
-    startWaitCountdown(90);
-  }
+  // Unused for now - kept for future bulk create feature
+  // async function createAssessmentsBulk() {
+  //   if (items.length === 0) return;
+  //   setBulkCreating(true);
+  //   setBulkProgress({ done: 0, total: items.length });
+  //   setError(null);
+  //   setPhase("creating");
+  //   for (const item of items) {
+  //     if (quizKeyById[item.id]) {
+  //       setBulkProgress((p) => ({ ...p, done: p.done + 1 }));
+  //       continue;
+  //     }
+  //     await createAssessment(item, false);
+  //     setBulkProgress((p) => ({ ...p, done: p.done + 1 }));
+  //   }
+  //   setBulkCreating(false);
+  //   startWaitCountdown(90);
+  // }
 
   async function createInteractive(item: PlaylistItem): Promise<boolean> {
     setCreatingInteractiveId(item.id);
@@ -497,23 +499,24 @@ export default function Home() {
     }
   }
 
-  async function createInteractivesBulk() {
-    if (items.length === 0) return;
-    setBulkCreatingInteractive(true);
-    setInteractiveProgress({ done: 0, total: items.length });
-    setError(null);
-    for (const item of items) {
-      if (interactiveCreatedById[item.id]) {
-        setInteractiveProgress((p) => ({ ...p, done: p.done + 1 }));
-        continue;
-      }
-      await createInteractive(item);
-      setInteractiveProgress((p) => ({ ...p, done: p.done + 1 }));
-    }
-    setBulkCreatingInteractive(false);
-    // Ensure 90s wait after the last create in bulk
-    startInteractiveWaitCountdown(90);
-  }
+  // Unused for now - kept for future bulk create feature
+  // async function createInteractivesBulk() {
+  //   if (items.length === 0) return;
+  //   setBulkCreatingInteractive(true);
+  //   setInteractiveProgress({ done: 0, total: items.length });
+  //   setError(null);
+  //   for (const item of items) {
+  //     if (interactiveCreatedById[item.id]) {
+  //       setInteractiveProgress((p) => ({ ...p, done: p.done + 1 }));
+  //       continue;
+  //     }
+  //     await createInteractive(item);
+  //     setInteractiveProgress((p) => ({ ...p, done: p.done + 1 }));
+  //   }
+  //   setBulkCreatingInteractive(false);
+  //   // Ensure 90s wait after the last create in bulk
+  //   startInteractiveWaitCountdown(90);
+  // }
 
   async function fetchAssessments() {
     setFetchingAssessments(true);
@@ -680,7 +683,7 @@ export default function Home() {
               {items.map((item) => {
                 const videoKey = quizKeyById[item.id];
                 const matchedId = videoKey ? Object.entries(quizMetaById).find(([, meta]) => meta.quizGenKey === videoKey)?.[0] : undefined;
-                const matched = matchedId ? quizMetaById[matchedId] : undefined;
+                const _matched = matchedId ? quizMetaById[matchedId] : undefined;
                 return (
                   <div key={item.id} className="flex items-center justify-between p-2 hover:bg-muted">
                     <a href={item.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 min-w-0 flex-1">
