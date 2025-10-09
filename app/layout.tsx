@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Image from "next/image";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,7 +32,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <div className="pt-5 pb-1 flex justify-center">
-          <img src="/wayground-logo.png" alt="Wayground" className="h-6 w-auto" />
+          <Image src="/wayground-logo.png" alt="Wayground" width={150} height={24} className="h-6 w-auto" priority />
         </div>
         {children}
       </body>

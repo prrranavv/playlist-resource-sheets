@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const SEARCH_ENDPOINT = "https://wayground.com/_sserverv2/main/v3/search/my-library";
-const QUIZ_BASE = "https://wayground.com/quiz/";
+// const QUIZ_BASE = "https://wayground.com/quiz/";
 
 // Use the interactive videos curl cookies and token
 const HARDCODED_COOKIE = "";

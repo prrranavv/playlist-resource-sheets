@@ -38,14 +38,14 @@ export default function Home() {
   const [publishProgress, setPublishProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
   const [phase, setPhase] = useState<"idle"|"videos"|"creating"|"waiting"|"can_fetch"|"fetched"|"published">("idle");
   const [waitRemaining, setWaitRemaining] = useState<number>(0);
-  const [_publishedDone, setPublishedDone] = useState(false);
+  // const [_publishedDone, setPublishedDone] = useState(false);
   const [_creatingInteractiveId, setCreatingInteractiveId] = useState<string | null>(null);
   const [_bulkCreatingInteractive, setBulkCreatingInteractive] = useState(false);
   const [_interactiveProgress, setInteractiveProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
   const [interactiveCreatedById, setInteractiveCreatedById] = useState<Record<string, boolean>>({});
   const [interactiveInfoByVideoId, setInteractiveInfoByVideoId] = useState<Record<string, { quizId: string; draftVersion: string }>>({});
   const [interactiveMetaByVideoId, setInteractiveMetaByVideoId] = useState<Record<string, { quizId: string; draftVersion: string; title: string }>>({});
-  const [_fetchingInteractive, _setFetchingInteractive] = useState(false);
+  // const [_fetchingInteractive, _setFetchingInteractive] = useState(false);
   const [_interactivePhase, setInteractivePhase] = useState<"idle"|"waiting"|"can_fetch">("idle");
   const [interactiveWaitRemaining, setInteractiveWaitRemaining] = useState<number>(0);
   const [publishingIVs, setPublishingIVs] = useState(false);
@@ -259,26 +259,26 @@ export default function Home() {
     return cookie ? { "x-wayground-cookie": cookie } : {};
   }
 
-  function extractCookieFromText(text: string): string | null {
-    if (!text) return null;
-    // -b 'cookie-string' or --cookie "cookie-string"
-    const m1 = text.match(/(?:\s|^)\-b\s+['\"]([^'\"\n]+)['\"]/i);
-    if (m1?.[1]) return m1[1];
-    const m2 = text.match(/(?:\s|^)\-\-cookie\s+['\"]([^'\"\n]+)['\"]/i);
-    if (m2?.[1]) return m2[1];
-    // -H 'cookie: ...' or -H "Cookie: ..."
-    const m3 = text.match(/\-H\s+['\"][Cc]ookie:\s*([^'\"\n]+)['\"]/i);
-    if (m3?.[1]) return m3[1];
-    // Any standalone line starting with Cookie:
-    const m4 = text.match(/^[Cc]ookie:\s*(.+)$/im);
-    if (m4?.[1]) return m4[1].trim();
-    return null;
-  }
+  // function extractCookieFromText(text: string): string | null {
+  //   if (!text) return null;
+  //   // -b 'cookie-string' or --cookie "cookie-string"
+  //   const m1 = text.match(/(?:\s|^)\-b\s+['\"]([^'\"\n]+)['\"]/i);
+  //   if (m1?.[1]) return m1[1];
+  //   const m2 = text.match(/(?:\s|^)\-\-cookie\s+['\"]([^'\"\n]+)['\"]/i);
+  //   if (m2?.[1]) return m2[1];
+  //   // -H 'cookie: ...' or -H "Cookie: ..."
+  //   const m3 = text.match(/\-H\s+['\"][Cc]ookie:\s*([^'\"\n]+)['\"]/i);
+  //   if (m3?.[1]) return m3[1];
+  //   // Any standalone line starting with Cookie:
+  //   const m4 = text.match(/^[Cc]ookie:\s*(.+)$/im);
+  //   if (m4?.[1]) return m4[1].trim();
+  //   return null;
+  // }
 
-  function openAuthModal() {
-    setAuthOpen(true);
-    setAuthError(null);
-  }
+  // function openAuthModal() {
+  //   setAuthOpen(true);
+  //   setAuthError(null);
+  // }
 
   async function handleLogin() {
     if (!email || !password) {
@@ -310,7 +310,7 @@ export default function Home() {
       } else {
         setAuthError(data.error || "Login failed. Please check your credentials.");
       }
-    } catch (err) {
+    } catch {
       setAuthError("Network error. Please try again.");
     } finally {
       setAuthLoading(false);
@@ -797,9 +797,11 @@ export default function Home() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img 
+                <Image 
                   src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/2560px-YouTube_full-color_icon_%282017%29.svg.png" 
                   alt="YouTube" 
+                  width={32}
+                  height={32}
                   className="h-8 w-auto"
                 />
                 <h2 className="text-xl font-semibold leading-none">Create Wayground resources from YouTube playlists!</h2>
@@ -940,7 +942,7 @@ export default function Home() {
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">2.</span>
                   <div>
-                    <div className="font-medium">Click "Show Videos" to load the playlist</div>
+                    <div className="font-medium">Click &ldquo;Show Videos&rdquo; to load the playlist</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
@@ -952,7 +954,7 @@ export default function Home() {
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">4.</span>
                   <div>
-                    <div className="font-medium mb-1">Click "Create resources"</div>
+                    <div className="font-medium mb-1">Click &ldquo;Create resources&rdquo;</div>
                     <div className="text-sm text-gray-600">Takes ~4-5 minutes. <span className="text-red-600 font-semibold">Do not close or refresh the tab.</span></div>
                   </div>
                 </li>
@@ -965,7 +967,7 @@ export default function Home() {
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">6.</span>
                   <div>
-                    <div className="font-medium">Click "Publish resources & Export Sheet"</div>
+                    <div className="font-medium">Click &ldquo;Publish resources & Export Sheet&rdquo;</div>
                   </div>
                 </li>
               </ol>
@@ -973,7 +975,7 @@ export default function Home() {
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => window.open('https://quizizz.slack.com/archives/D06PSV64YCW', '_blank')}
+                  onClick={() => window.open('https://slack.com/app_redirect?channel=U06PZF56D5Z', '_blank')}
                 >
                   Need help? Contact on Slack
                 </Button>
@@ -998,7 +1000,7 @@ export default function Home() {
               {items.map((item) => {
                 const videoKey = quizKeyById[item.id];
                 const matchedId = videoKey ? Object.entries(quizMetaById).find(([, meta]) => meta.quizGenKey === videoKey)?.[0] : undefined;
-                const _matched = matchedId ? quizMetaById[matchedId] : undefined;
+                // const _matched = matchedId ? quizMetaById[matchedId] : undefined;
                 return (
                   <div key={item.id} className="flex items-center justify-between p-2 hover:bg-muted">
                     <a href={item.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 min-w-0 flex-1">
