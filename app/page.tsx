@@ -370,8 +370,8 @@ export default function Home() {
     setPublishProgress({ done: 0, total: assessmentPairs.length });
     for (const p of assessmentPairs) {
       try {
-        await fetch("/api/wayground/publish-quiz", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(p) });
-        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quizId: p.quizId }) });
+        await fetch("/api/wayground/publish-quiz", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
+        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
       } catch {}
       setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
     }
@@ -380,8 +380,8 @@ export default function Home() {
     setPublishIVProgress({ done: 0, total: ivPairs.length });
     for (const p of ivPairs) {
       try {
-        await fetch("/api/wayground/publish-interactive", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(p) });
-        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quizId: p.quizId }) });
+        await fetch("/api/wayground/publish-interactive", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
+        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
       } catch {}
       setPublishIVProgress((s) => ({ ...s, done: s.done + 1 }));
     }
