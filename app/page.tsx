@@ -536,31 +536,59 @@ export default function Home() {
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
       if (ids.length > 0) {
-        // Process one ID at a time with 5 second delay to avoid rate limiting
+        // Process one ID at a time with exponential backoff to avoid rate limiting
         const allKeys: Record<string, string | null> = {};
         const allVersions: Record<string, string | null> = {};
+        let consecutiveRateLimits = 0;
+        let baseDelay = 8000; // Start with 8 seconds
         
         for (let i = 0; i < ids.length; i++) {
           const quizId = ids[i];
+          let retryCount = 0;
+          let success = false;
           
-          try {
-            const res2 = await fetch("/api/wayground/fetch-quiz-keys", {
-              method: "POST",
-              headers: { "content-type": "application/json", ...cookieHeader() },
-              body: JSON.stringify({ quizIds: [quizId] }),
-            });
-            const data2 = await res2.json();
-            if (res2.ok && data2?.quizGenKeysById) {
-              Object.assign(allKeys, data2.quizGenKeysById);
-              if (data2?.draftVersionById) Object.assign(allVersions, data2.draftVersionById);
+          while (!success && retryCount < 3) {
+            try {
+              const res2 = await fetch("/api/wayground/fetch-quiz-keys", {
+                method: "POST",
+                headers: { "content-type": "application/json", ...cookieHeader() },
+                body: JSON.stringify({ quizIds: [quizId] }),
+              });
+              const data2 = await res2.json();
+              
+              // Check if rate limited
+              if (data2?.error?.includes?.("TOO_MANY_REQUESTS") || data2?.error?.includes?.("rateLimiter")) {
+                consecutiveRateLimits++;
+                const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount)); // Max 30s
+                console.log(`Rate limited on ${quizId}, waiting ${retryDelay}ms before retry ${retryCount + 1}/3`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                retryCount++;
+                continue;
+              }
+              
+              if (res2.ok && data2?.quizGenKeysById) {
+                Object.assign(allKeys, data2.quizGenKeysById);
+                if (data2?.draftVersionById) Object.assign(allVersions, data2.draftVersionById);
+                consecutiveRateLimits = 0; // Reset on success
+              }
+              success = true;
+            } catch (err) {
+              console.error(`Failed to fetch quiz key for ${quizId}:`, err);
+              retryCount++;
+              if (retryCount < 3) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+              }
             }
-          } catch (err) {
-            console.error(`Failed to fetch quiz key for ${quizId}:`, err);
           }
           
-          // Wait 5 seconds before next request (except for last one)
+          // Adaptive delay: increase if we're getting rate limited
+          let delay = baseDelay + (consecutiveRateLimits * 2000); // Add 2s per rate limit
+          delay = Math.min(delay, 30000); // Cap at 30 seconds
+          
+          // Wait before next request (except for last one)
           if (i < ids.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            console.log(`Waiting ${delay}ms before next request (consecutive rate limits: ${consecutiveRateLimits})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
         
