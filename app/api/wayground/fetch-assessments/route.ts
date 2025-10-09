@@ -13,11 +13,17 @@ function extractCsrfFromCookie(cookie?: string): string | undefined {
   return match ? match[1] : undefined;
 }
 
-type QuizSummary = { id: string; title: string };
+type QuizSummary = { id: string; title: string; createdAt?: string };
 
-function pushIfValid(results: Map<string, QuizSummary>, id: unknown, title: unknown) {
+function pushIfValid(results: Map<string, QuizSummary>, id: unknown, title: unknown, createdAt?: unknown) {
   if (typeof id === "string" && /^[a-f0-9]{24}$/i.test(id) && typeof title === "string" && title.length > 0) {
-    if (!results.has(id)) results.set(id, { id, title });
+    if (!results.has(id)) {
+      results.set(id, { 
+        id, 
+        title,
+        createdAt: typeof createdAt === "string" ? createdAt : undefined
+      });
+    }
   }
 }
 
@@ -30,25 +36,29 @@ function collectQuizSummaries(value: unknown, results: Map<string, QuizSummary>)
   if (typeof value !== "object") return;
 
   const obj: Record<string, unknown> = value as Record<string, unknown>;
+  // Extract createdAt
+  const createdAt = (obj["createdAt"] as string | undefined) || 
+                    ((obj["quiz"] as Record<string, unknown> | undefined)?.["createdAt"] as string | undefined);
+  
   // Prefer explicit quiz/draft structures if present
-  const quizObj = obj["quiz"] as { _id?: string; id?: string; name?: string } | undefined;
+  const quizObj = obj["quiz"] as { _id?: string; id?: string; name?: string; createdAt?: string } | undefined;
   if (quizObj && typeof quizObj === "object") {
     const id = quizObj._id || quizObj.id;
     const draftObj = obj["draft"] as { name?: string } | undefined;
     const title = draftObj?.name || quizObj.name || (obj["name"] as string | undefined) || (obj["title"] as string | undefined);
-    pushIfValid(results, id, title);
+    pushIfValid(results, id, title, createdAt || quizObj.createdAt);
   }
   const draftObj2 = obj["draft"] as { name?: string } | undefined;
   if (draftObj2 && typeof draftObj2 === "object") {
     const title = draftObj2.name || (obj["name"] as string | undefined) || (obj["title"] as string | undefined);
-    const quizObj2 = obj["quiz"] as { _id?: string; id?: string } | undefined;
+    const quizObj2 = obj["quiz"] as { _id?: string; id?: string; createdAt?: string } | undefined;
     const id = quizObj2?._id || quizObj2?.id || (obj["_id"] as string | undefined) || (obj["id"] as string | undefined);
-    pushIfValid(results, id, title);
+    pushIfValid(results, id, title, createdAt || quizObj2?.createdAt);
   }
   // Fallback: only when object looks like a quiz doc
   const isQuizType = obj["type"] === "quiz" || (obj["hasDraftVersion"] as boolean | undefined) === true;
   if (isQuizType) {
-    pushIfValid(results, (obj["_id"] as string | undefined) || (obj["id"] as string | undefined), (obj["name"] as string | undefined) || (obj["title"] as string | undefined));
+    pushIfValid(results, (obj["_id"] as string | undefined) || (obj["id"] as string | undefined), (obj["name"] as string | undefined) || (obj["title"] as string | undefined), createdAt);
   }
 
   for (const v of Object.values(obj)) collectQuizSummaries(v, results);
@@ -113,39 +123,11 @@ export async function POST(request: Request) {
     collectQuizSummaries(data, map);
     const quizzes = Array.from(map.values()).slice(0, 100);
 
-    // Fetch quizGenKey and draftVersion for each assessment similar to IV flow
-    const quizGenKeyById: Record<string, string | null> = {};
-    const draftVersionById: Record<string, string | null> = {};
-    const idsToProcess = quizzes.map(q => q.id).slice(0, 100);
-    const BATCH = 10;
-    for (let i = 0; i < idsToProcess.length; i += BATCH) {
-      const chunk = idsToProcess.slice(i, i + BATCH);
-      await Promise.all(chunk.map(async (id) => {
-        try {
-          const resQ = await fetch(QUIZ_BASE + encodeURIComponent(id), {
-            headers: {
-              accept: "application/json, text/plain, */*",
-              cookie: headerCookie,
-              referer: `https://wayground.com/admin/quiz/${id}`,
-              "x-csrf-token": csrfToken,
-              "x-requested-with": "XMLHttpRequest",
-              "x-component-type": "adminv3",
-            },
-          });
-          const t = await resQ.text();
-          const j = JSON.parse(t);
-          const key = (j?.data?.draft?.aiCreateMeta?.quizGenKey || j?.draft?.aiCreateMeta?.quizGenKey || j?.aiCreateMeta?.quizGenKey) as string | undefined;
-          const version = (j?.data?.quiz?.draftVersion || j?.quiz?.draftVersion) as string | undefined;
-          quizGenKeyById[id] = key ?? null;
-          draftVersionById[id] = version ?? null;
-        } catch {
-          quizGenKeyById[id] = null;
-          draftVersionById[id] = null;
-        }
-      }));
-    }
-
-    return NextResponse.json({ quizIds: quizzes.map(q => q.id), quizzes, quizGenKeyById, draftVersionById, raw: data }, { status: res.status });
+    return NextResponse.json({ 
+      quizIds: quizzes.map(q => q.id), 
+      quizzes,
+      raw: data 
+    }, { status: res.status });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -529,21 +529,35 @@ export default function Home() {
       setFetchedQuizIds(ids);
       const quizTitleMap: Record<string, { title: string }> = {};
       if (Array.isArray(data?.quizzes)) {
-        for (const q of data.quizzes as Array<{ id: string; title: string }>) {
+        for (const q of data.quizzes as Array<{ id: string; title: string; createdAt?: string }>) {
           if (q?.id) quizTitleMap[q.id] = { title: q.title };
         }
       }
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
-      if (ids.length > 0) {
+      // Filter for quizzes created in the last 5 minutes
+      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+      const recentQuizzes = Array.isArray(data?.quizzes) 
+        ? (data.quizzes as Array<{ id: string; title: string; createdAt?: string }>)
+            .filter(q => {
+              if (!q.createdAt) return false;
+              const createdTime = new Date(q.createdAt).getTime();
+              return createdTime >= fiveMinutesAgo;
+            })
+        : [];
+      
+      const recentIds = recentQuizzes.map(q => q.id);
+      console.log(`Found ${ids.length} total assessments, ${recentIds.length} created in last 5 minutes`);
+
+      if (recentIds.length > 0) {
         // Process one ID at a time with exponential backoff to avoid rate limiting
         const allKeys: Record<string, string | null> = {};
         const allVersions: Record<string, string | null> = {};
         let consecutiveRateLimits = 0;
         const baseDelay = 8000; // Start with 8 seconds
         
-        for (let i = 0; i < ids.length; i++) {
-          const quizId = ids[i];
+        for (let i = 0; i < recentIds.length; i++) {
+          const quizId = recentIds[i];
           let retryCount = 0;
           let success = false;
           
@@ -586,7 +600,7 @@ export default function Home() {
           delay = Math.min(delay, 30000); // Cap at 30 seconds
           
           // Wait before next request (except for last one)
-          if (i < ids.length - 1) {
+          if (i < recentIds.length - 1) {
             console.log(`Waiting ${delay}ms before next request (consecutive rate limits: ${consecutiveRateLimits})`);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
