@@ -36,8 +36,8 @@ export async function POST(request: Request) {
     const results: Record<string, string | null> = {};
     const versions: Record<string, string | null> = {};
     
-    // Process sequentially to avoid rate limiting (client batches the calls)
-    const idsToProcess = quizIds.slice(0, 10); // Max 10 IDs per call
+    // Process only 1 ID per API call to avoid rate limiting
+    const idsToProcess = quizIds.slice(0, 1); // Max 1 ID per call
     
     for (const id of idsToProcess) {
       try {

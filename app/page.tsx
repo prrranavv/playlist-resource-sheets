@@ -536,30 +536,31 @@ export default function Home() {
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
       if (ids.length > 0) {
-        // Process in batches of 10 with 3 second delay between API calls
-        const BATCH_SIZE = 10;
+        // Process one ID at a time with 5 second delay to avoid rate limiting
         const allKeys: Record<string, string | null> = {};
         const allVersions: Record<string, string | null> = {};
         
-        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-          const batch = ids.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < ids.length; i++) {
+          const quizId = ids[i];
           
           try {
             const res2 = await fetch("/api/wayground/fetch-quiz-keys", {
               method: "POST",
               headers: { "content-type": "application/json", ...cookieHeader() },
-              body: JSON.stringify({ quizIds: batch }),
+              body: JSON.stringify({ quizIds: [quizId] }),
             });
             const data2 = await res2.json();
             if (res2.ok && data2?.quizGenKeysById) {
               Object.assign(allKeys, data2.quizGenKeysById);
               if (data2?.draftVersionById) Object.assign(allVersions, data2.draftVersionById);
             }
-          } catch {}
+          } catch (err) {
+            console.error(`Failed to fetch quiz key for ${quizId}:`, err);
+          }
           
-          // Wait 3 seconds before next batch (except for last batch)
-          if (i + BATCH_SIZE < ids.length) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
+          // Wait 5 seconds before next request (except for last one)
+          if (i < ids.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
           }
         }
         
