@@ -798,7 +798,7 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Image 
-                  src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/2560px-YouTube_full-color_icon_%282017%29.svg.png" 
+                  src="/youtube.png" 
                   alt="YouTube" 
                   width={32}
                   height={32}
