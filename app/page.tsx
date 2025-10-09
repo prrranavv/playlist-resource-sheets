@@ -917,72 +917,66 @@ export default function Home() {
 
         {helpOpen && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="w-full max-w-2xl rounded-md bg-white p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">How to use</h3>
+            <div className="w-full max-w-xl rounded-lg bg-white p-6 space-y-5 max-h-[90vh] overflow-y-auto shadow-xl">
+              <div className="flex items-center justify-between pb-2 border-b">
+                <h3 className="text-xl font-semibold">How to use</h3>
                 <button 
                   onClick={() => setHelpOpen(false)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
-              <ol className="space-y-4 text-sm">
+              <ol className="space-y-4">
                 <li className="flex gap-3">
-                  <span className="font-semibold shrink-0">1.</span>
+                  <span className="font-bold text-blue-600 shrink-0">1.</span>
                   <div>
-                    <strong>Enter the YouTube playlist link/ID.</strong> It will look something like:
-                    <ul className="mt-2 space-y-1 text-muted-foreground">
-                      <li>• <code className="bg-gray-100 px-2 py-0.5 rounded text-xs">https://www.youtube.com/watch?v=-KE7jTXwNYs&list=PLSQl0a2vh4HCKeX3g-Mj5wXS0nfDeDSGS</code> (link)</li>
-                      <li>• <code className="bg-gray-100 px-2 py-0.5 rounded text-xs">PLSQl0a2vh4HCKeX3g-Mj5wXS0nfDeDSGS</code> (ID)</li>
-                    </ul>
+                    <div className="font-medium mb-1">Paste YouTube playlist URL or ID</div>
+                    <div className="text-sm text-gray-600">
+                      Example: <code className="bg-gray-50 px-1.5 py-0.5 rounded text-xs">PLSQl0a2vh4HCKeX3g-Mj5wXS0nfDeDSGS</code>
+                    </div>
                   </div>
                 </li>
                 <li className="flex gap-3">
-                  <span className="font-semibold shrink-0">2.</span>
+                  <span className="font-bold text-blue-600 shrink-0">2.</span>
                   <div>
-                    <strong>Click on Show videos.</strong> This should show all the YouTube videos in that playlist.
+                    <div className="font-medium">Click "Show Videos" to load the playlist</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
-                  <span className="font-semibold shrink-0">3.</span>
+                  <span className="font-bold text-blue-600 shrink-0">3.</span>
                   <div>
-                    <strong>Select the Subject and Grade.</strong>
+                    <div className="font-medium">Select Subject and Grade</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
-                  <span className="font-semibold shrink-0">4.</span>
+                  <span className="font-bold text-blue-600 shrink-0">4.</span>
                   <div>
-                    <strong>Click on Create resources.</strong> This will take around ~4-5 minutes to create resources. <span className="text-red-600 font-medium">Wait, and don&apos;t refresh or close the tab.</span>
+                    <div className="font-medium mb-1">Click "Create resources"</div>
+                    <div className="text-sm text-gray-600">Takes ~4-5 minutes. <span className="text-red-600 font-semibold">Do not close or refresh the tab.</span></div>
                   </div>
                 </li>
                 <li className="flex gap-3">
-                  <span className="font-semibold shrink-0">5.</span>
+                  <span className="font-bold text-blue-600 shrink-0">5.</span>
                   <div>
-                    <strong>Once done, see if all the videos have Assessments and Interactive Videos created.</strong>
+                    <div className="font-medium">Verify Assessments and Interactive Videos are created</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
-                  <span className="font-semibold shrink-0">6.</span>
+                  <span className="font-bold text-blue-600 shrink-0">6.</span>
                   <div>
-                    <strong>All set? Click on Publish resources & Export Sheet.</strong>
+                    <div className="font-medium">Click "Publish resources & Export Sheet"</div>
                   </div>
                 </li>
               </ol>
-              <div className="pt-4 border-t">
-                <p className="text-sm text-muted-foreground">
-                  If you run into any issues, ping me on Slack:{" "}
-                  <a 
-                    href="https://quizizz.slack.com/archives/D06PSV64YCW" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    https://quizizz.slack.com/archives/D06PSV64YCW
-                  </a>
-                </p>
-              </div>
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => window.open('https://quizizz.slack.com/archives/D06PSV64YCW', '_blank')}
+                >
+                  Need help? Contact on Slack
+                </Button>
                 <Button onClick={() => setHelpOpen(false)}>
                   Got it!
                 </Button>
