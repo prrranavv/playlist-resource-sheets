@@ -64,8 +64,11 @@ export default function Home() {
   const [assessmentMatchedCount, setAssessmentMatchedCount] = useState<number>(0);
   const [ivMatchedCount, setIvMatchedCount] = useState<number>(0);
   const [readyToPublish, setReadyToPublish] = useState(false);
-  const [cookieOpen, setCookieOpen] = useState(false);
-  const [cookieInput, setCookieInput] = useState<string>("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   function buildAssessmentPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
     const pairs: Array<{ quizId: string; draftVersion: string }> = [];
@@ -239,18 +242,46 @@ export default function Home() {
     return null;
   }
 
-  function openCookieModal() {
-    const existing = (typeof window !== "undefined") ? (localStorage.getItem("waygroundCookie") || "") : "";
-    setCookieInput(existing);
-    setCookieOpen(true);
+  function openAuthModal() {
+    setAuthOpen(true);
+    setAuthError(null);
   }
 
-  function saveCookie() {
-    let toStore = cookieInput || "";
-    const extracted = extractCookieFromText(toStore);
-    if (extracted) toStore = extracted;
-    if (typeof window !== "undefined") localStorage.setItem("waygroundCookie", toStore);
-    setCookieOpen(false);
+  async function handleLogin() {
+    if (!email || !password) {
+      setAuthError("Email and password are required");
+      return;
+    }
+    
+    setAuthLoading(true);
+    setAuthError(null);
+    
+    try {
+      const res = await fetch("/api/wayground/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: email, password }),
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok && data.success && data.cookies) {
+        // Store cookies in localStorage
+        if (typeof window !== "undefined") {
+          localStorage.setItem("waygroundCookie", data.cookies);
+        }
+        setAuthOpen(false);
+        setEmail("");
+        setPassword("");
+        setAuthError(null);
+      } else {
+        setAuthError(data.error || "Login failed. Please check your credentials.");
+      }
+    } catch (err) {
+      setAuthError("Network error. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
   }
 
 
@@ -743,7 +774,7 @@ export default function Home() {
               <Button onClick={fetchPlaylist} disabled={!input || loading}>
                 {loading ? "Loading..." : "Show Videos"}
               </Button>
-              <Button variant="secondary" onClick={openCookieModal}>Wayground Cookie</Button>
+              <Button variant="secondary" onClick={openAuthModal}>Wayground Login</Button>
               {/* Publish IVs button removed per request */}
             </div>
             {error && (
@@ -798,14 +829,47 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {cookieOpen && (
+        {authOpen && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="w-full max-w-xl rounded-md bg-white p-4 space-y-3">
-              <h3 className="text-base font-medium">Paste Wayground Cookie</h3>
-              <textarea className="w-full h-40 border rounded p-2 text-sm" value={cookieInput} onChange={(e) => setCookieInput(e.target.value)} placeholder="Paste the entire Cookie string here" />
+            <div className="w-full max-w-md rounded-md bg-white p-6 space-y-4">
+              <h3 className="text-lg font-semibold">Login to Wayground</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">Email</label>
+                  <Input 
+                    type="email" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your.email@example.com"
+                    disabled={authLoading}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Password</label>
+                  <Input 
+                    type="password" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    disabled={authLoading}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !authLoading) {
+                        handleLogin();
+                      }
+                    }}
+                  />
+                </div>
+                {authError && (
+                  <p className="text-sm text-red-600">{authError}</p>
+                )}
+              </div>
               <div className="flex justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setCookieOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={saveCookie}>Save</Button>
+                <Button variant="secondary" size="sm" onClick={() => setAuthOpen(false)} disabled={authLoading}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleLogin} disabled={authLoading}>
+                  {authLoading ? "Logging in..." : "Login"}
+                </Button>
               </div>
             </div>
           </div>
