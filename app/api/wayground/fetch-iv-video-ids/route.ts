@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     console.log(`[fetch-iv-video-ids] Cookie preview: ${useCookie.substring(0, 100)}...`);
 
     const results: Record<string, string | null> = {};
+    const titles: Record<string, string | null> = {};
     
     // Process only 1 ID per API call to avoid rate limiting
     const idsToProcess = quizIds.slice(0, 1); // Max 1 ID per call
@@ -59,9 +60,12 @@ export async function POST(request: Request) {
         try {
           const data = JSON.parse(text);
           
-          // Extract video ID from IV quiz
-          const media = data?.data?.draft?.questions?.[0]?.structure?.query?.media?.[0] 
+          // Extract video ID from IV quiz (check both draft and published)
+          const draftMedia = data?.data?.draft?.questions?.[0]?.structure?.query?.media?.[0] 
             || data?.draft?.questions?.[0]?.structure?.query?.media?.[0];
+          const quizMedia = data?.data?.quiz?.questions?.[0]?.structure?.query?.media?.[0]
+            || data?.quiz?.questions?.[0]?.structure?.query?.media?.[0];
+          const media = draftMedia || quizMedia;
           
           let videoId = media?.meta?.videoId as string | undefined;
           const urlStr = media?.url as string | undefined;
@@ -74,20 +78,30 @@ export async function POST(request: Request) {
             } catch {}
           }
           
+          // Extract title from IV quiz (check both draft and published)
+          const title = (data?.data?.draft?.info?.name 
+            || data?.draft?.info?.name 
+            || data?.data?.quiz?.info?.name 
+            || data?.quiz?.info?.name) as string | undefined;
+          
           console.log(`[fetch-iv-video-ids] Extracted video ID for ${id}: ${videoId || 'null'}`);
+          console.log(`[fetch-iv-video-ids] Extracted title for ${id}: ${title || 'null'}`);
           results[id] = videoId ?? null;
+          titles[id] = title ?? null;
         } catch (parseErr) {
           console.error(`[fetch-iv-video-ids] JSON parse error for ${id}:`, parseErr);
           console.error(`[fetch-iv-video-ids] Raw text for ${id}:`, text.substring(0, 500));
           results[id] = null;
+          titles[id] = null;
         }
       } catch (fetchErr) {
         console.error(`[fetch-iv-video-ids] Fetch error for ${id}:`, fetchErr);
         results[id] = null;
+        titles[id] = null;
       }
     }
 
-    return NextResponse.json({ videoIdsById: results });
+    return NextResponse.json({ videoIdsById: results, titlesById: titles });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

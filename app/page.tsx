@@ -125,8 +125,9 @@ export default function Home() {
       console.log(`Found ${allIVs.length} total IVs, ${recentIVs.length} created in last 5 minutes`);
       
       if (recentIVs.length > 0) {
-        // Fetch video IDs for recent IVs with exponential backoff
+        // Fetch video IDs and titles for recent IVs with exponential backoff
         const videoIdMap: Record<string, string> = {}; // quizId -> videoId
+        const titleMap: Record<string, string> = {}; // quizId -> title
         let consecutiveRateLimits = 0;
         const baseDelay = 8000;
         
@@ -156,8 +157,12 @@ export default function Home() {
               
               if (res2.ok && data2?.videoIdsById) {
                 const videoId = data2.videoIdsById[iv.quizId];
+                const title = data2.titlesById?.[iv.quizId];
                 if (videoId) {
                   videoIdMap[iv.quizId] = videoId;
+                }
+                if (title) {
+                  titleMap[iv.quizId] = title;
                 }
                 consecutiveRateLimits = 0;
               }
@@ -181,7 +186,7 @@ export default function Home() {
           }
         }
         
-        // Update state with fetched video IDs
+        // Update state with fetched video IDs and titles
         const setMap: Record<string, boolean> = {};
         const infoMap: Record<string, { quizId: string; draftVersion: string }> = {};
         const metaMap: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
@@ -189,9 +194,10 @@ export default function Home() {
         for (const [quizId, videoId] of Object.entries(videoIdMap)) {
           setMap[videoId] = true;
           const iv = recentIVs.find(i => i.quizId === quizId);
+          const title = titleMap[quizId] || "";
           if (iv?.draftVersion) {
             infoMap[videoId] = { quizId, draftVersion: iv.draftVersion };
-            metaMap[videoId] = { quizId, draftVersion: iv.draftVersion, title: "" };
+            metaMap[videoId] = { quizId, draftVersion: iv.draftVersion, title };
           }
         }
         
