@@ -17,9 +17,9 @@ export async function POST(request: Request) {
   try {
     const headerCookie = request.headers.get("x-wayground-cookie") || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE;
     const headerCsrf = request.headers.get("x-wayground-csrf");
-    const csrfToken = headerCsrf || CSRF || "Y1mHRsKn-QS9Y7fwqLbzCKBIWnSB-kd6QSWQ";
-    // Step 1: paginate through drafts with activityTypes:["video-quiz"] and collect quiz ids + draft versions + createdAt
-    const candidates = new Map<string, { draftVersion: string | null; createdAt?: string }>(); // quizId -> {draftVersion, createdAt}
+        const csrfToken = headerCsrf || CSRF || "Y1mHRsKn-QS9Y7fwqLbzCKBIWnSB-kd6QSWQ";
+        // Step 1: paginate through drafts with activityTypes:["video-quiz"] and collect quiz ids + draft versions + createdAt + titles
+        const candidates = new Map<string, { draftVersion: string | null; createdAt?: string; title?: string }>(); // quizId -> {draftVersion, createdAt, title}
     let from = 0;
     const size = 100;
     let pagesFetched = 0;
@@ -60,11 +60,18 @@ export async function POST(request: Request) {
         const id = (q as Record<string, unknown>)["_id"] || (q as Record<string, unknown>)["id"] || anyObj["quizId"] || anyObj["_id"] || anyObj["id"];
         const dV = (q as Record<string, unknown>)["draftVersion"] || anyObj["draftVersion"] || null;
         const createdAt = (q as Record<string, unknown>)["createdAt"] || anyObj["createdAt"];
+        
+        // Extract title using same logic as fetch-assessments
+        const quizObj = anyObj["quiz"] as { name?: string } | undefined;
+        const draftObj = anyObj["draft"] as { name?: string } | undefined;
+        const title = (draftObj?.name || quizObj?.name || anyObj["name"] || (q as Record<string, unknown>)["name"]) as string | undefined;
+        
         if (typeof id === "string" && /^[a-f0-9]{24}$/i.test(id) && (type === "video-quiz")) {
           if (!candidates.has(id)) {
             candidates.set(id, { 
               draftVersion: typeof dV === "string" ? dV : null,
-              createdAt: typeof createdAt === "string" ? createdAt : undefined
+              createdAt: typeof createdAt === "string" ? createdAt : undefined,
+              title: typeof title === "string" ? title : undefined
             });
           }
         }
@@ -83,14 +90,15 @@ export async function POST(request: Request) {
       if (hitsLen !== undefined && hitsLen < size) break;
     }
 
-    // Return IVs with metadata (client will fetch video IDs for recent ones only)
-    const interactive = Array.from(candidates.entries()).map(([quizId, data]) => ({
-      quizId,
-      draftVersion: data.draftVersion,
-      createdAt: data.createdAt
-    }));
-    
-    return NextResponse.json({ interactive: interactive.slice(0, 100) });
+        // Return IVs with metadata (client will fetch video IDs for recent ones only)
+        const interactive = Array.from(candidates.entries()).map(([quizId, data]) => ({
+          quizId,
+          draftVersion: data.draftVersion,
+          createdAt: data.createdAt,
+          title: data.title
+        }));
+        
+        return NextResponse.json({ interactive: interactive.slice(0, 100) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

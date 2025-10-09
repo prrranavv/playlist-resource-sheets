@@ -112,7 +112,7 @@ export default function Home() {
     const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST", headers: cookieHeader() });
     const data = await res.json();
     if (res.ok && Array.isArray(data?.interactive)) {
-      const allIVs = data.interactive as Array<{ quizId: string; draftVersion?: string | null; createdAt?: string }>;
+      const allIVs = data.interactive as Array<{ quizId: string; draftVersion?: string | null; createdAt?: string; title?: string }>;
       
       // Filter for IVs created in the last 5 minutes
       const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
@@ -127,12 +127,17 @@ export default function Home() {
       if (recentIVs.length > 0) {
         // Fetch video IDs and titles for recent IVs with exponential backoff
         const videoIdMap: Record<string, string> = {}; // quizId -> videoId
-        const titleMap: Record<string, string> = {}; // quizId -> title
+        const titleMap: Record<string, string> = {}; // quizId -> title (from fetch-interactive-map or fetch-iv-video-ids)
         let consecutiveRateLimits = 0;
         const baseDelay = 8000;
         
         for (let i = 0; i < recentIVs.length; i++) {
           const iv = recentIVs[i];
+          // Use title from fetch-interactive-map as initial value
+          if (iv.title) {
+            titleMap[iv.quizId] = iv.title;
+          }
+          
           let retryCount = 0;
           let success = false;
           
@@ -161,6 +166,7 @@ export default function Home() {
                 if (videoId) {
                   videoIdMap[iv.quizId] = videoId;
                 }
+                // Prefer title from fetch-iv-video-ids if available, otherwise keep the one from fetch-interactive-map
                 if (title) {
                   titleMap[iv.quizId] = title;
                 }
