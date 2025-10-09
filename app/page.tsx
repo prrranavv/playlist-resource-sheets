@@ -794,7 +794,14 @@ export default function Home() {
       <div className="mx-auto max-w-4xl space-y-6">
         <Card>
           <CardHeader className="pb-2">
-            <h2 className="text-xl font-semibold leading-none">YouTube Playlist Sheets</h2>
+            <div className="flex items-center gap-3">
+              <img 
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/2560px-YouTube_full-color_icon_%282017%29.svg.png" 
+                alt="YouTube" 
+                className="h-8 w-auto"
+              />
+              <h2 className="text-xl font-semibold leading-none">Create Wayground resources from YouTube playlists</h2>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -806,8 +813,6 @@ export default function Home() {
               <Button onClick={fetchPlaylist} disabled={!input || loading}>
                 {loading ? "Loading..." : "Show Videos"}
               </Button>
-              <Button variant="secondary" onClick={openAuthModal}>Wayground Login</Button>
-              {/* Publish IVs button removed per request */}
             </div>
             {error && (
               <p className="text-sm text-red-600 mt-3">{error}</p>
@@ -852,9 +857,6 @@ export default function Home() {
               <Button size="sm" variant="secondary" onClick={publishResources} disabled={!readyToPublish || publishing || publishingIVs}>
                 {publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` : "Publish resources & Export Sheet"}
               </Button>
-              {(createFlowStatus === "doneIV" || readyToPublish) && (
-                <span className="text-xs text-muted-foreground">{assessmentMatchedCount}/{items.length} assessments • {ivMatchedCount}/{items.length} interactive videos created</span>
-              )}
             </div>
             
             {/* Removed per request: do not show repeated assessments created text here */}

@@ -16,9 +16,9 @@ export const metadata: Metadata = {
   title: "Wayground Resource Sheets Generator",
   description: "Generate resource sheets and interactive videos from YouTube playlists",
   icons: {
-    icon: "/wayground-icon.png",
-    shortcut: "/wayground-icon.png",
-    apple: "/wayground-icon.png",
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
   },
 };
 
