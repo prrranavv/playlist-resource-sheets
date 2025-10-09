@@ -28,9 +28,29 @@ export async function POST(request: Request) {
       return new NextResponse(text, { status: res.status });
     }
 
-    // Extract Set-Cookie headers
+    // Extract Set-Cookie headers and parse them properly
     const cookies = res.headers.getSetCookie();
-    const cookieString = cookies.join("; ");
+    
+    // Extract just the cookie name=value pairs (before the first semicolon)
+    // Skip empty values (cookies being cleared) and duplicates (keep the last one)
+    const cookieMap = new Map<string, string>();
+    
+    for (const cookie of cookies) {
+      const nameValue = cookie.split(';')[0].trim();
+      if (!nameValue) continue;
+      
+      const [name, value] = nameValue.split('=');
+      if (!name || !value) continue;
+      
+      // Skip if it's being cleared (Max-Age=0 or empty value)
+      if (cookie.includes('Max-Age=0') || value === '') continue;
+      
+      cookieMap.set(name, value);
+    }
+    
+    const cookieString = Array.from(cookieMap.entries())
+      .map(([name, value]) => `${name}=${value}`)
+      .join("; ");
     
     // Extract CSRF token from cookies
     const csrfMatch = cookieString.match(/x-csrf-token=([^;]+)/);
