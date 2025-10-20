@@ -385,6 +385,30 @@ export default function Home() {
     return pairs;
   }
 
+  function findVideoTitleForAssessment(quizId: string): string | null {
+    // Find the quizGenKey for this assessment
+    const meta = quizMetaById[quizId];
+    if (!meta?.quizGenKey) return null;
+    
+    // Find the video that has this quizGenKey
+    const videoId = Object.entries(quizKeyById).find(([, key]) => key === meta.quizGenKey)?.[0];
+    if (!videoId) return null;
+    
+    // Find the video title from items
+    const video = items.find(item => item.id === videoId);
+    return video?.title || null;
+  }
+
+  function findVideoTitleForIV(quizId: string): string | null {
+    // Find the video ID that maps to this IV quizId
+    const videoId = Object.entries(interactiveInfoByVideoId).find(([, info]) => info.quizId === quizId)?.[0];
+    if (!videoId) return null;
+    
+    // Find the video title from items
+    const video = items.find(item => item.id === videoId);
+    return video?.title || null;
+  }
+
   async function exportCsv() {
     const rows: Array<string[]> = [];
     rows.push([
@@ -448,6 +472,12 @@ export default function Home() {
       try {
         await fetch("/api/wayground/publish-quiz", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
         await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
+        
+        // Update name to match YouTube video title
+        const videoTitle = findVideoTitleForAssessment(p.quizId);
+        if (videoTitle) {
+          await fetch("/api/wayground/update-name", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId, name: videoTitle }) });
+        }
       } catch {}
       setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
     }
@@ -458,6 +488,12 @@ export default function Home() {
       try {
         await fetch("/api/wayground/publish-interactive", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
         await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
+        
+        // Update name to match YouTube video title
+        const videoTitle = findVideoTitleForIV(p.quizId);
+        if (videoTitle) {
+          await fetch("/api/wayground/update-name", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId, name: videoTitle }) });
+        }
       } catch {}
       setPublishIVProgress((s) => ({ ...s, done: s.done + 1 }));
     }
