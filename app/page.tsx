@@ -430,20 +430,24 @@ export default function Home() {
       if (!vKey) continue;
       const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
       if (!entry) continue;
-      const [qId, meta] = entry as [string, { title: string }];
+      const [qId] = entry as [string, { title: string }];
       const videoLink = `https://www.youtube.com/watch?v=${it.id}`;
       const assessmentLink = `https://wayground.com/admin/quiz/${qId}`;
       const ivMeta = interactiveMetaByVideoId[it.id];
-      const ivTitle = ivMeta?.title || "";
       const ivLink = ivMeta?.quizId ? `https://wayground.com/admin/quiz/${ivMeta.quizId}` : "";
       const ivId = ivMeta?.quizId || "";
+      
+      // Use YouTube video title for both assessment and IV titles (matching the updated names on Wayground)
+      const assessmentTitle = it.title;
+      const ivTitle = it.title;
+      
       rows.push([
         playlistTitle || "",
         playlistLink,
         it.title,
         it.id,
         videoLink,
-        meta.title || "",
+        assessmentTitle,
         assessmentLink,
         qId,
         ivTitle,
