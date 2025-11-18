@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import Image from "next/image";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 
 type PlaylistItem = {
   id: string;
@@ -70,6 +70,44 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+
+  // Subject options
+  const subjectOptions = [
+    { value: "Science", label: "Science" },
+    { value: "Math", label: "Math" },
+    { value: "English Language Arts (ELA)", label: "English Language Arts (ELA)" },
+    { value: "Social Studies", label: "Social Studies" },
+    { value: "History", label: "History" },
+    { value: "Civics", label: "Civics" },
+    { value: "Government", label: "Government" },
+    { value: "Economics", label: "Economics" },
+    { value: "World Languages", label: "World Languages" },
+    { value: "English as a Second Language (ESL/ELL)", label: "English as a Second Language (ESL/ELL)" },
+    { value: "Computer Science", label: "Computer Science" },
+    { value: "Technology/STEM", label: "Technology/STEM" },
+    { value: "Engineering", label: "Engineering" },
+    { value: "Health Education", label: "Health Education" },
+    { value: "Career & Technical Education (CTE)", label: "Career & Technical Education (CTE)" },
+    { value: "Social-Emotional Learning (SEL)", label: "Social-Emotional Learning (SEL)" },
+    { value: "Life Skills", label: "Life Skills" },
+  ];
+
+  // Grade options K-12
+  const gradeOptions = [
+    { value: "K", label: "Kindergarten" },
+    { value: "1", label: "Grade 1" },
+    { value: "2", label: "Grade 2" },
+    { value: "3", label: "Grade 3" },
+    { value: "4", label: "Grade 4" },
+    { value: "5", label: "Grade 5" },
+    { value: "6", label: "Grade 6" },
+    { value: "7", label: "Grade 7" },
+    { value: "8", label: "Grade 8" },
+    { value: "9", label: "Grade 9" },
+    { value: "10", label: "Grade 10" },
+    { value: "11", label: "Grade 11" },
+    { value: "12", label: "Grade 12" },
+  ];
 
   // Auto-login on component mount to get fresh cookies
   useEffect(() => {
@@ -869,30 +907,25 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row gap-3 mt-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm">Subject</span>
-                <Select value={subject} onValueChange={setSubject}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="Subject" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Math">Math</SelectItem>
-                    <SelectItem value="ELA">ELA</SelectItem>
-                    <SelectItem value="Science">Science</SelectItem>
-                    <SelectItem value="Social Studies">Social Studies</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  options={subjectOptions}
+                  value={subject}
+                  onValueChange={setSubject}
+                  placeholder="Select subject"
+                  searchPlaceholder="Search subjects..."
+                  className="w-[280px]"
+                />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm">Grade</span>
-                <Select value={grade} onValueChange={setGrade}>
-                  <SelectTrigger className="w-[120px]"><SelectValue placeholder="Grade" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="6">6</SelectItem>
-                    <SelectItem value="7">7</SelectItem>
-                    <SelectItem value="8">8</SelectItem>
-                    <SelectItem value="9">9</SelectItem>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="11">11</SelectItem>
-                    <SelectItem value="12">12</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  options={gradeOptions}
+                  value={grade}
+                  onValueChange={setGrade}
+                  placeholder="Select grade"
+                  searchPlaceholder="Search grades..."
+                  className="w-[160px]"
+                />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3 mt-3">
