@@ -600,7 +600,10 @@ export default function Home() {
     console.log(`[ui:publish] All ${ivPairs.length} IVs published`);
     setPublishingIVs(false);
     setResourcesPublished(true);
-    console.log("[ui:createResources] COMPLETE - All resources created and published!");
+    
+    // Automatically show output after everything is complete
+    setShowOutput(true);
+    console.log("[ui:createResources] COMPLETE - All resources created and published! Output displayed.");
   }
 
   function buildAssessmentPublishPairsWithData(
