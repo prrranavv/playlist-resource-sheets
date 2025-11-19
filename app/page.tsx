@@ -1327,24 +1327,19 @@ export default function Home() {
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">5.</span>
                   <div>
-                    <div className="font-medium">Verify Assessments and Interactive Videos are created</div>
+                    <div className="font-medium mb-1">Resources are automatically created and published!</div>
+                    <div className="text-sm text-gray-600">Assessment and Interactive Video icons will appear on each video when complete.</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">6.</span>
                   <div>
-                    <div className="font-medium">Click &ldquo;Publish resources & Export Sheet&rdquo;</div>
+                    <div className="font-medium mb-1">Click &ldquo;Export CSV&rdquo; to download the data</div>
+                    <div className="text-sm text-gray-600">Optional: The button appears above the video list when resources are ready.</div>
                   </div>
                 </li>
               </ol>
-              <div className="flex items-center justify-between pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => window.open('https://slack.com/app_redirect?channel=U06PZF56D5Z', '_blank')}
-                >
-                  Need help? Contact on Slack
-                </Button>
+              <div className="flex justify-end pt-4 border-t">
                 <Button onClick={() => setHelpOpen(false)}>
                   Got it!
                 </Button>
