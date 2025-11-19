@@ -763,10 +763,11 @@ export default function Home() {
   //   setResourcesPublished(true);
   // }
 
-  function showOutputLinks() {
-    // Just show output links in the video table
-    setShowOutput(true);
-  }
+  // Unused - output is shown automatically after resource creation
+  // function showOutputLinks() {
+  //   // Just show output links in the video table
+  //   setShowOutput(true);
+  // }
   // Unused for now - kept for future bulk publish feature
   // async function publishAssessmentsAll() {
   //   const pairs = buildAssessmentPublishPairs();
@@ -1229,9 +1230,6 @@ export default function Home() {
                  createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
                  createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
                  "Create resources"}
-              </Button>
-              <Button size="sm" variant="outline" onClick={showOutputLinks} disabled={!resourcesPublished}>
-                Show output
               </Button>
             </div>
             
