@@ -36,24 +36,32 @@ async function getYouTubeDurationSeconds(videoId: string, apiKey?: string): Prom
 }
 
 export async function POST(request: Request) {
+  console.log('[api:wayground:create-interactive] Request received');
   try {
     const body = await request.json();
     const { videoUrl, videoId, duration, grade, subject } = body ?? {};
     if (!videoUrl || !videoId) {
+      console.log('[api:wayground:create-interactive] Error: Missing videoUrl or videoId');
       return NextResponse.json({ error: "Missing videoUrl or videoId" }, { status: 400 });
     }
 
+    console.log(`[api:wayground:create-interactive] Video: ${videoId}, Grade: ${grade || '6'}, Subject: ${subject || 'Science'}`);
+
     let durationSeconds: number = typeof duration === "number" ? duration : 0;
     if (!durationSeconds || durationSeconds <= 0) {
+      console.log('[api:wayground:create-interactive] Fetching video duration from YouTube API');
       const apiKey = process.env.YOUTUBE_API_KEY;
       const fetched = await getYouTubeDurationSeconds(String(videoId), apiKey);
-      if (typeof fetched === "number" && fetched > 0) durationSeconds = fetched;
+      if (typeof fetched === "number" && fetched > 0) {
+        durationSeconds = fetched;
+        console.log(`[api:wayground:create-interactive] Duration fetched: ${durationSeconds}s`);
+      }
     }
 
     const payload = {
       videoUrl: String(videoUrl),
       params: {
-        grade: String(grade ?? "6"),
+        grade: String(grade ?? "6th Grade"),
         subject: String(subject ?? "Science"),
         language: "English",
         numQuestions: 0,
@@ -80,6 +88,7 @@ export async function POST(request: Request) {
     const headerCsrf = request.headers.get("x-wayground-csrf");
     const csrfToken = (typeof body?.csrf === "string" && body.csrf.trim()) ? body.csrf.trim() : (headerCsrf?.trim() || extractCsrfFromCookie(cookieHeader) || CURL_CSRF);
 
+    console.log('[api:wayground:create-interactive] Sending request to Wayground API');
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: {
@@ -109,15 +118,19 @@ export async function POST(request: Request) {
       body: JSON.stringify(payload),
     });
 
+    console.log(`[api:wayground:create-interactive] Response status: ${res.status}`);
     const text = await res.text();
     try {
       const data = JSON.parse(text);
+      console.log('[api:wayground:create-interactive] Success - interactive video creation initiated');
       return NextResponse.json(data, { status: res.status });
     } catch {
+      console.log('[api:wayground:create-interactive] Response not JSON, returning as text');
       return new NextResponse(text, { status: res.status });
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:wayground:create-interactive] Error: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

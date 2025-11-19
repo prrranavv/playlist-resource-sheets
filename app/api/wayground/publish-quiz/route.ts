@@ -6,11 +6,15 @@ const HARDCODED_COOKIE = "";
 const CSRF = "3xHamJ3szMhUH68u0CggmCSZ9xo";
 
 export async function POST(request: Request) {
+  console.log('[api:wayground:publish-quiz] Request received');
   try {
     const { quizId, draftVersion, cookie: cookieBody, csrf: csrfBody } = await request.json();
     if (!quizId || !draftVersion) {
+      console.log('[api:wayground:publish-quiz] Error: Missing quizId or draftVersion');
       return NextResponse.json({ error: "quizId and draftVersion required" }, { status: 400 });
     }
+    
+    console.log(`[api:wayground:publish-quiz] Publishing quiz ${quizId} version ${draftVersion}`);
     const headerCookie = request.headers.get("x-wayground-cookie");
     const cookieHeader = (typeof cookieBody === "string" && cookieBody.trim()) ? cookieBody.trim() : (headerCookie?.trim() || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE);
     const headerCsrf = request.headers.get("x-wayground-csrf");
@@ -43,15 +47,20 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({ premiumUse: false }),
     });
+    
+    console.log(`[api:wayground:publish-quiz] Response status: ${res.status}`);
     const text = await res.text();
     try {
       const data = JSON.parse(text);
+      console.log(`[api:wayground:publish-quiz] Success - quiz ${quizId} published`);
       return NextResponse.json(data, { status: res.status });
     } catch {
+      console.log('[api:wayground:publish-quiz] Response not JSON, returning as text');
       return new NextResponse(text, { status: res.status });
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:wayground:publish-quiz] Error: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -28,6 +28,7 @@ function extractPlaylistId(input: string): string | null {
 }
 
 async function fetchAllPlaylistItems(playlistId: string, apiKey: string): Promise<YouTubePlaylistItem[]> {
+  console.log(`[api:playlist:fetchItems] Starting fetch for playlist: ${playlistId}`);
   const collected: YouTubePlaylistItem[] = [];
   let pageToken: string | undefined = undefined;
   // Fetch up to a reasonable number of pages to avoid runaway usage
@@ -42,9 +43,11 @@ async function fetchAllPlaylistItems(playlistId: string, apiKey: string): Promis
     url.searchParams.set("key", apiKey);
     if (pageToken) url.searchParams.set("pageToken", pageToken);
 
+    console.log(`[api:playlist:fetchItems] Fetching page ${pagesFetched + 1}/${maxPages}`);
     const res = await fetch(url.toString());
     if (!res.ok) {
       const text = await res.text();
+      console.error(`[api:playlist:fetchItems] YouTube API error: ${res.status} - ${text.substring(0, 200)}`);
       throw new Error(`YouTube API error: ${res.status} ${res.statusText} - ${text}`);
     }
     const data = await res.json();
@@ -77,9 +80,14 @@ async function fetchAllPlaylistItems(playlistId: string, apiKey: string): Promis
 
     pageToken = data.nextPageToken as string | undefined;
     pagesFetched += 1;
-    if (!pageToken) break;
+    console.log(`[api:playlist:fetchItems] Page ${pagesFetched} collected ${items.length} items (total: ${collected.length})`);
+    if (!pageToken) {
+      console.log(`[api:playlist:fetchItems] No more pages, fetch complete`);
+      break;
+    }
   }
 
+  console.log(`[api:playlist:fetchItems] Total items fetched: ${collected.length}`);
   return collected;
 }
 
@@ -104,30 +112,42 @@ async function fetchPlaylistMeta(
 }
 
 export async function GET(request: Request) {
+  console.log('[api:playlist] Request received');
   const { searchParams } = new URL(request.url);
   const urlOrId = searchParams.get("url") || searchParams.get("playlistId");
+  
   if (!urlOrId) {
+    console.log('[api:playlist] Error: Missing URL or playlist ID parameter');
     return NextResponse.json({ error: "Missing 'url' or 'playlistId' query parameter" }, { status: 400 });
   }
 
+  console.log(`[api:playlist] Input: ${urlOrId.substring(0, 100)}`);
+
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
+    console.error('[api:playlist] Error: YOUTUBE_API_KEY not configured');
     return NextResponse.json({ error: "Server missing YOUTUBE_API_KEY env var" }, { status: 500 });
   }
 
   const playlistId = extractPlaylistId(urlOrId);
   if (!playlistId) {
+    console.log('[api:playlist] Error: Invalid playlist URL or ID format');
     return NextResponse.json({ error: "Invalid playlist URL or ID" }, { status: 400 });
   }
 
+  console.log(`[api:playlist] Extracted playlist ID: ${playlistId}`);
+
   try {
+    console.log('[api:playlist] Fetching playlist data from YouTube API');
     const [items, meta] = await Promise.all([
       fetchAllPlaylistItems(playlistId, apiKey),
       fetchPlaylistMeta(playlistId, apiKey),
     ]);
+    console.log(`[api:playlist] Success: Fetched ${items.length} items, title="${meta.title}", channel="${meta.channelTitle}"`);
     return NextResponse.json({ playlistId, playlistTitle: meta.title, channelTitle: meta.channelTitle, items });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:playlist] Error fetching playlist: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

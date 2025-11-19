@@ -3,13 +3,16 @@ import { NextResponse } from "next/server";
 const BASE_URL = "https://wayground.com/_quizserver/main/v2/quiz";
 
 export async function POST(request: Request) {
+  console.log('[api:wayground:update-name] Request received');
   try {
     const { quizId, name, cookie: cookieBody, csrf: csrfBody } = await request.json();
     
     if (!quizId || !name) {
+      console.log('[api:wayground:update-name] Error: Missing quizId or name');
       return NextResponse.json({ error: "quizId and name are required" }, { status: 400 });
     }
 
+    console.log(`[api:wayground:update-name] Updating quiz ${quizId} name to: ${name.substring(0, 50)}...`);
     const headerCookie = request.headers.get("x-wayground-cookie");
     const cookieHeader = (typeof cookieBody === "string" && cookieBody.trim()) 
       ? cookieBody.trim() 
@@ -54,15 +57,19 @@ export async function POST(request: Request) {
       }),
     });
 
+    console.log(`[api:wayground:update-name] Response status: ${res.status}`);
     const text = await res.text();
     try {
       const data = JSON.parse(text);
+      console.log(`[api:wayground:update-name] Success - name updated for quiz ${quizId}`);
       return NextResponse.json(data, { status: res.status });
     } catch {
+      console.log('[api:wayground:update-name] Response not JSON, returning as text');
       return new NextResponse(text, { status: res.status });
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:wayground:update-name] Error: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

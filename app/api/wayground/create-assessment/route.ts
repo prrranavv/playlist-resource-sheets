@@ -13,7 +13,7 @@ function extractCsrfFromCookie(cookie?: string): string | undefined {
 }
 
 function mapSubjectToWayground(subject: string): string {
-  if (subject === "Math") return "Mathematics";
+  // No mapping needed - subjects already match Wayground's expected values
   return subject;
 }
 
@@ -41,12 +41,17 @@ async function getYouTubeDurationSeconds(videoId: string, apiKey?: string): Prom
 }
 
 export async function POST(request: Request) {
+  console.log('[api:wayground:create-assessment] Request received');
   try {
     const body = await request.json();
     const { videoUrl, grade, subject, duration, videoId } = body ?? {};
+    
     if (!videoUrl || !grade || !subject || !videoId) {
+      console.log('[api:wayground:create-assessment] Error: Missing required fields');
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+
+    console.log(`[api:wayground:create-assessment] Video: ${videoId}, Grade: ${grade}, Subject: ${subject}`);
 
     // Allow overriding via header/body, else fall back to env/hardcoded values
     const headerCookie = request.headers.get("x-wayground-cookie");
@@ -61,9 +66,13 @@ export async function POST(request: Request) {
     // Construct minimal payload matching the provided curl, keeping numQuestions = 0
     let durationSeconds: number = typeof duration === "number" ? duration : 0;
     if (!durationSeconds || durationSeconds <= 0) {
+      console.log(`[api:wayground:create-assessment] Fetching video duration from YouTube API`);
       const apiKey = process.env.YOUTUBE_API_KEY;
       const fetched = await getYouTubeDurationSeconds(String(videoId), apiKey);
-      if (typeof fetched === "number" && fetched > 0) durationSeconds = fetched;
+      if (typeof fetched === "number" && fetched > 0) {
+        durationSeconds = fetched;
+        console.log(`[api:wayground:create-assessment] Duration fetched: ${durationSeconds}s`);
+      }
     }
 
     const payload = {
@@ -92,6 +101,7 @@ export async function POST(request: Request) {
     };
 
     // Forward request to Wayground with headers from provided curl
+    console.log('[api:wayground:create-assessment] Sending request to Wayground API');
     const res = await fetch(WAYGROUND_ENDPOINT, {
       method: "POST",
       headers: {
@@ -122,6 +132,7 @@ export async function POST(request: Request) {
       body: JSON.stringify(payload),
     });
 
+    console.log(`[api:wayground:create-assessment] Response status: ${res.status}`);
     const text = await res.text();
     const headers = {
       "x-upstream-status": String(res.status),
@@ -129,12 +140,20 @@ export async function POST(request: Request) {
     // Try to parse JSON; if fails, return plain text with status
     try {
       const data = JSON.parse(text);
+      const quizGenKey = (data as any)?.data?.quizGenKey || (data as any)?.quizGenKey;
+      if (quizGenKey) {
+        console.log(`[api:wayground:create-assessment] Success - quizGenKey: ${quizGenKey}`);
+      } else {
+        console.log('[api:wayground:create-assessment] Success - no quizGenKey in response');
+      }
       return NextResponse.json(data, { status: res.status, headers });
     } catch {
+      console.log('[api:wayground:create-assessment] Response not JSON, returning as text');
       return new NextResponse(text, { status: res.status, headers });
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:wayground:create-assessment] Error: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

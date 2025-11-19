@@ -65,6 +65,7 @@ function collectQuizSummaries(value: unknown, results: Map<string, QuizSummary>)
 }
 
 export async function POST(request: Request) {
+  console.log('[api:wayground:fetch-assessments] Request received');
   try {
     // Dynamic cookie handling: prioritize header > env > hardcoded
     const headerCookie = request.headers.get("x-wayground-cookie") || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE;
@@ -84,6 +85,7 @@ export async function POST(request: Request) {
       _: "uqF9It",
     };
 
+    console.log('[api:wayground:fetch-assessments] Fetching assessment library from Wayground');
     const res = await fetch(url.toString(), {
       method: "POST",
       headers: {
@@ -111,17 +113,21 @@ export async function POST(request: Request) {
       body: JSON.stringify(body),
     });
 
+    console.log(`[api:wayground:fetch-assessments] Response status: ${res.status}`);
     const text = await res.text();
     let data: unknown = null;
     try {
       data = JSON.parse(text);
     } catch {
+      console.error('[api:wayground:fetch-assessments] Failed to parse response as JSON');
       return new NextResponse(text, { status: res.status });
     }
 
     const map = new Map<string, QuizSummary>();
     collectQuizSummaries(data, map);
     const quizzes = Array.from(map.values()).slice(0, 100);
+
+    console.log(`[api:wayground:fetch-assessments] Found ${quizzes.length} assessments`);
 
     return NextResponse.json({ 
       quizIds: quizzes.map(q => q.id), 
@@ -130,6 +136,7 @@ export async function POST(request: Request) {
     }, { status: res.status });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:wayground:fetch-assessments] Error: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

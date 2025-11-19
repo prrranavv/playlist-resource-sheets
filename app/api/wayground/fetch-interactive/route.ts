@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 const SEARCH_ENDPOINT = "https://wayground.com/_sserverv2/main/v3/search/my-library";
 
 export async function POST(request: Request) {
+  console.log('[api:wayground:fetch-interactive] Request received');
   try {
     const headerCookie = request.headers.get("x-wayground-cookie") || process.env.WAYGROUND_COOKIE || "";
     const url = new URL(SEARCH_ENDPOINT);
     url.searchParams.set("from", "0");
     url.searchParams.set("size", "100");
 
+    console.log('[api:wayground:fetch-interactive] Fetching interactive videos from Wayground');
     const res = await fetch(url.toString(), {
       method: "POST",
       headers: {
@@ -53,9 +55,11 @@ export async function POST(request: Request) {
     };
     collect(data);
 
+    console.log(`[api:wayground:fetch-interactive] Found ${interactive.length} interactive videos`);
     return NextResponse.json({ interactive, quizIds: interactive.map(i => i.quizId) }, { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:wayground:fetch-interactive] Error: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

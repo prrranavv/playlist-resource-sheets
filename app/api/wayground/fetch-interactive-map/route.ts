@@ -14,6 +14,7 @@ async function fetchJson(url: string, init?: RequestInit) {
 }
 
 export async function POST(request: Request) {
+  console.log('[api:wayground:fetch-interactive-map] Request received');
   try {
     const headerCookie = request.headers.get("x-wayground-cookie") || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE;
     const headerCsrf = request.headers.get("x-wayground-csrf");
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
     let from = 0;
     const size = 100;
     let pagesFetched = 0;
+    console.log('[api:wayground:fetch-interactive-map] Fetching interactive videos from Wayground');
     while (pagesFetched < 20) { // up to 2000 items
       const url = new URL(SEARCH_ENDPOINT);
       url.searchParams.set("from", String(from));
@@ -98,9 +100,11 @@ export async function POST(request: Request) {
           title: data.title
         }));
         
+        console.log(`[api:wayground:fetch-interactive-map] Found ${interactive.length} interactive videos (returning first 100)`);
         return NextResponse.json({ interactive: interactive.slice(0, 100) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[api:wayground:fetch-interactive-map] Error: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
