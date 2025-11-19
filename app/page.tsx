@@ -26,12 +26,12 @@ export default function Home() {
   const [channelTitle, setChannelTitle] = useState<string | null>(null);
   const [grade, setGrade] = useState<string>("6th Grade");
   const [subject, setSubject] = useState<string>("Science");
-  const [_creatingId, setCreatingId] = useState<string | null>(null);
+  const [, setCreatingId] = useState<string | null>(null);
   const [quizKeyById, setQuizKeyById] = useState<Record<string, string>>({});
-  const [_bulkCreating, setBulkCreating] = useState(false);
-  const [_bulkProgress, setBulkProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
-  const [_fetchedQuizIds, setFetchedQuizIds] = useState<string[]>([]);
-  const [_fetchingAssessments, setFetchingAssessments] = useState(false);
+  const [, setBulkCreating] = useState(false);
+  const [, setBulkProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
+  const [, setFetchedQuizIds] = useState<string[]>([]);
+  const [, setFetchingAssessments] = useState(false);
   const [quizMetaById, setQuizMetaById] = useState<Record<string, { title: string; quizGenKey?: string | null }>>({});
   const [draftVersionById, setDraftVersionById] = useState<Record<string, string | null>>({});
   const [publishing, setPublishing] = useState(false);
@@ -39,14 +39,14 @@ export default function Home() {
   const [phase, setPhase] = useState<"idle"|"videos"|"creating"|"waiting"|"can_fetch"|"fetched"|"published">("idle");
   const [waitRemaining, setWaitRemaining] = useState<number>(0);
   // const [_publishedDone, setPublishedDone] = useState(false);
-  const [_creatingInteractiveId, setCreatingInteractiveId] = useState<string | null>(null);
-  const [_bulkCreatingInteractive, setBulkCreatingInteractive] = useState(false);
-  const [_interactiveProgress, setInteractiveProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
+  const [, setCreatingInteractiveId] = useState<string | null>(null);
+  const [, setBulkCreatingInteractive] = useState(false);
+  const [, setInteractiveProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
   const [interactiveCreatedById, setInteractiveCreatedById] = useState<Record<string, boolean>>({});
   const [interactiveInfoByVideoId, setInteractiveInfoByVideoId] = useState<Record<string, { quizId: string; draftVersion: string }>>({});
   const [interactiveMetaByVideoId, setInteractiveMetaByVideoId] = useState<Record<string, { quizId: string; draftVersion: string; title: string }>>({});
   // const [_fetchingInteractive, _setFetchingInteractive] = useState(false);
-  const [_interactivePhase, setInteractivePhase] = useState<"idle"|"waiting"|"can_fetch">("idle");
+  const [, setInteractivePhase] = useState<"idle"|"waiting"|"can_fetch">("idle");
   const [interactiveWaitRemaining, setInteractiveWaitRemaining] = useState<number>(0);
   const [publishingIVs, setPublishingIVs] = useState(false);
   const [publishIVProgress, setPublishIVProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
@@ -61,9 +61,9 @@ export default function Home() {
     | "fetchingIV"
     | "doneIV"
   >("idle");
-  const [assessmentMatchedCount, setAssessmentMatchedCount] = useState<number>(0);
-  const [ivMatchedCount, setIvMatchedCount] = useState<number>(0);
-  const [readyToPublish, setReadyToPublish] = useState(false);
+  const [, setAssessmentMatchedCount] = useState<number>(0);
+  const [, setIvMatchedCount] = useState<number>(0);
+  const [, setReadyToPublish] = useState(false);
   const [resourcesPublished, setResourcesPublished] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [email, setEmail] = useState<string>("");
@@ -637,15 +637,6 @@ export default function Home() {
     return pairs;
   }
 
-  function findVideoTitleForAssessmentById(
-    quizId: string,
-    fetchedQuizMetaById: Record<string, { title: string; quizGenKey?: string | null }>
-  ): string | null {
-    // Get the title from the fetched metadata
-    const meta = fetchedQuizMetaById[quizId];
-    return meta?.title || null;
-  }
-
   function findVideoTitleForAssessment(quizId: string): string | null {
     // Find the quizGenKey for this assessment
     const meta = quizMetaById[quizId];
@@ -731,45 +722,46 @@ export default function Home() {
     console.log(`[ui:exportCsv] CSV exported: ${filename}`);
   }
 
-  async function publishResources() {
-    const assessmentPairs = buildAssessmentPublishPairs();
-    const ivPairs = buildIvPublishPairs();
-    console.log("Assessment pairs to publish:", assessmentPairs.length, assessmentPairs);
-    console.log("IV pairs to publish:", ivPairs.length, ivPairs);
-    setPublishing(true);
-    setPublishProgress({ done: 0, total: assessmentPairs.length });
-    for (const p of assessmentPairs) {
-      try {
-        await fetch("/api/wayground/publish-quiz", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
-        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
-        
-        // Update name to match YouTube video title
-        const videoTitle = findVideoTitleForAssessment(p.quizId);
-        if (videoTitle) {
-          await fetch("/api/wayground/update-name", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId, name: videoTitle }) });
-        }
-      } catch {}
-      setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
-    }
-    setPublishing(false);
-    setPublishingIVs(true);
-    setPublishIVProgress({ done: 0, total: ivPairs.length });
-    for (const p of ivPairs) {
-      try {
-        await fetch("/api/wayground/publish-interactive", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
-        await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
-        
-        // Update name to match YouTube video title
-        const videoTitle = findVideoTitleForIV(p.quizId);
-        if (videoTitle) {
-          await fetch("/api/wayground/update-name", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId, name: videoTitle }) });
-        }
-      } catch {}
-      setPublishIVProgress((s) => ({ ...s, done: s.done + 1 }));
-    }
-    setPublishingIVs(false);
-    setResourcesPublished(true);
-  }
+  // Unused - kept for reference
+  // async function publishResources() {
+  //   const assessmentPairs = buildAssessmentPublishPairs();
+  //   const ivPairs = buildIvPublishPairs();
+  //   console.log("Assessment pairs to publish:", assessmentPairs.length, assessmentPairs);
+  //   console.log("IV pairs to publish:", ivPairs.length, ivPairs);
+  //   setPublishing(true);
+  //   setPublishProgress({ done: 0, total: assessmentPairs.length });
+  //   for (const p of assessmentPairs) {
+  //     try {
+  //       await fetch("/api/wayground/publish-quiz", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
+  //       await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
+  //       
+  //       // Update name to match YouTube video title
+  //       const videoTitle = findVideoTitleForAssessment(p.quizId);
+  //       if (videoTitle) {
+  //         await fetch("/api/wayground/update-name", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId, name: videoTitle }) });
+  //       }
+  //     } catch {}
+  //     setPublishProgress((s) => ({ ...s, done: s.done + 1 }));
+  //   }
+  //   setPublishing(false);
+  //   setPublishingIVs(true);
+  //   setPublishIVProgress({ done: 0, total: ivPairs.length });
+  //   for (const p of ivPairs) {
+  //     try {
+  //       await fetch("/api/wayground/publish-interactive", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
+  //       await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
+  //       
+  //       // Update name to match YouTube video title
+  //       const videoTitle = findVideoTitleForIV(p.quizId);
+  //       if (videoTitle) {
+  //         await fetch("/api/wayground/update-name", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId, name: videoTitle }) });
+  //       }
+  //     } catch {}
+  //     setPublishIVProgress((s) => ({ ...s, done: s.done + 1 }));
+  //   }
+  //   setPublishingIVs(false);
+  //   setResourcesPublished(true);
+  // }
 
   function showOutputLinks() {
     // Just show output links in the video table
@@ -871,49 +863,50 @@ export default function Home() {
     }, 1000);
   }
 
-  async function createAssessment(item: PlaylistItem, startWait: boolean = true): Promise<boolean> {
-    console.log(`[ui:createAssessment] Creating assessment for video ${item.id}: "${item.title.substring(0, 50)}..."`);
-    setCreatingId(item.id);
-    if (phase === "videos") setPhase("creating");
-    try {
-      const res = await fetch("/api/wayground/create-assessment", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...cookieHeader() },
-        body: JSON.stringify({
-          videoUrl: item.videoUrl,
-          grade,
-          subject,
-          duration: 0,
-          videoId: item.id,
-        }),
-      });
-      const cloned = res.clone();
-      let data: unknown = null;
-      try {
-        data = await res.json();
-      } catch {
-        data = await cloned.text();
-      }
-      if (!res.ok) {
-        throw new Error(typeof data === "string" ? data : JSON.stringify(data));
-      }
-      const key = findQuizGenKey(data);
-      if (key) {
-        console.log(`[ui:createAssessment] Success for ${item.id}, quizGenKey: ${key}`);
-        setQuizKeyById((prev) => ({ ...prev, [item.id]: key }));
-      } else {
-        console.log(`[ui:createAssessment] Success for ${item.id}, but no quizGenKey found`);
-      }
-      if (startWait) startWaitCountdown(90);
-      return true;
-    } catch (e: unknown) {
-      console.error(`[ui:createAssessment] Error for ${item.id}:`, e);
-      setError("Failed to create assessment. See console for details.");
-      return false;
-    } finally {
-      setCreatingId(null);
-    }
-  }
+  // Unused - using createAssessmentAndGetKey instead
+  // async function createAssessment(item: PlaylistItem, startWait: boolean = true): Promise<boolean> {
+  //   console.log(`[ui:createAssessment] Creating assessment for video ${item.id}: "${item.title.substring(0, 50)}..."`);
+  //   setCreatingId(item.id);
+  //   if (phase === "videos") setPhase("creating");
+  //   try {
+  //     const res = await fetch("/api/wayground/create-assessment", {
+  //       method: "POST",
+  //       headers: { "content-type": "application/json", ...cookieHeader() },
+  //       body: JSON.stringify({
+  //         videoUrl: item.videoUrl,
+  //         grade,
+  //         subject,
+  //         duration: 0,
+  //         videoId: item.id,
+  //       }),
+  //     });
+  //     const cloned = res.clone();
+  //     let data: unknown = null;
+  //     try {
+  //       data = await res.json();
+  //     } catch {
+  //       data = await cloned.text();
+  //     }
+  //     if (!res.ok) {
+  //       throw new Error(typeof data === "string" ? data : JSON.stringify(data));
+  //     }
+  //     const key = findQuizGenKey(data);
+  //     if (key) {
+  //       console.log(`[ui:createAssessment] Success for ${item.id}, quizGenKey: ${key}`);
+  //       setQuizKeyById((prev) => ({ ...prev, [item.id]: key }));
+  //     } else {
+  //       console.log(`[ui:createAssessment] Success for ${item.id}, but no quizGenKey found`);
+  //     }
+  //     if (startWait) startWaitCountdown(90);
+  //     return true;
+  //   } catch (e: unknown) {
+  //     console.error(`[ui:createAssessment] Error for ${item.id}:`, e);
+  //     setError("Failed to create assessment. See console for details.");
+  //     return false;
+  //   } finally {
+  //     setCreatingId(null);
+  //   }
+  // }
 
   async function createAssessmentAndGetKey(item: PlaylistItem): Promise<string | null> {
     console.log(`[ui:createAssessment] Creating assessment for video ${item.id}: "${item.title.substring(0, 50)}..."`);

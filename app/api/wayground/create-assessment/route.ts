@@ -140,7 +140,8 @@ export async function POST(request: Request) {
     // Try to parse JSON; if fails, return plain text with status
     try {
       const data = JSON.parse(text);
-      const quizGenKey = (data as any)?.data?.quizGenKey || (data as any)?.quizGenKey;
+      const dataObj = data as { data?: { quizGenKey?: string }; quizGenKey?: string };
+      const quizGenKey = dataObj?.data?.quizGenKey || dataObj?.quizGenKey;
       if (quizGenKey) {
         console.log(`[api:wayground:create-assessment] Success - quizGenKey: ${quizGenKey}`);
       } else {
