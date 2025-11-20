@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,6 +13,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import Link from "next/link";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getSubjectIcon } from "@/lib/icons";
 
 type PlaylistItem = {
   id: string;
@@ -23,6 +27,7 @@ type PlaylistItem = {
 };
 
 export default function Home() {
+  const router = useRouter();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +94,24 @@ export default function Home() {
   const [exportingSheets, setExportingSheets] = useState(false);
   const [exportedSheetUrl, setExportedSheetUrl] = useState<string | null>(null);
   const [exportedCopyUrl, setExportedCopyUrl] = useState<string | null>(null);
+  const [exploreSections, setExploreSections] = useState<Array<{
+    subject: string;
+    channels: Array<{
+      channel_id: string;
+      channel_title: string | null;
+      channel_thumbnail: string | null;
+      playlists: Array<{
+        id: string;
+        title: string;
+        slug: string;
+        thumbnail_url: string | null;
+        video_count: number;
+        channel_title: string | null;
+        channel_thumbnail: string | null;
+      }>;
+    }>;
+  }>>([]);
+  const [loadingExplore, setLoadingExplore] = useState(true);
 
   // Subject options
   const subjectOptions = [
@@ -186,6 +209,30 @@ export default function Home() {
     
     autoLogin();
   }, []); // Empty dependency array - runs once on mount
+
+  // Fetch explore data on mount
+  useEffect(() => {
+    async function fetchExploreData() {
+      try {
+        setLoadingExplore(true);
+        const res = await fetch('/api/explore');
+        const data = await res.json();
+        
+        if (res.ok && data.sections) {
+          setExploreSections(data.sections);
+          console.log('[ui:explore] Loaded', data.sections.length, 'subject sections');
+        } else {
+          console.error('[ui:explore] Failed to fetch explore data:', data.error);
+        }
+      } catch (err) {
+        console.error('[ui:explore] Error fetching explore data:', err);
+      } finally {
+        setLoadingExplore(false);
+      }
+    }
+    
+    fetchExploreData();
+  }, []);
 
   // function buildAssessmentPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
   //   const pairs: Array<{ quizId: string; draftVersion: string }> = [];
@@ -729,6 +776,10 @@ export default function Home() {
       console.log("[ui:saveToSupabase] Creating Google Sheet...");
       await createGoogleSheetInBackground(videos);
       console.log("[ui:saveToSupabase] Google Sheet creation complete!");
+
+      // Redirect to the playlist page
+      console.log(`[ui:saveToSupabase] Redirecting to: ${result.url}`);
+      router.push(result.url);
 
     } catch (err) {
       console.error("[ui:saveToSupabase] Error saving to Supabase:", err);
@@ -1736,37 +1787,25 @@ export default function Home() {
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">1.</span>
                   <div>
-                    <div className="font-medium">Enter your YouTube playlist and load videos</div>
+                    <div className="font-medium">Paste YouTube playlist URL and load videos</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">2.</span>
                   <div>
-                    <div className="font-medium">Choose subject and grade level</div>
+                    <div className="font-medium">Select subject and grade level</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">3.</span>
                   <div>
-                    <div className="font-medium">Create resources (takes 4-5 min, keep tab open)</div>
+                    <div className="font-medium">Click "Create Resources" (takes 4-5 min)</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">4.</span>
                   <div>
-                    <div className="font-medium">Your assessments and videos are ready to use!</div>
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <span className="font-bold text-blue-600 shrink-0">5.</span>
-                  <div>
-                    <div className="font-medium">Share the page with your team</div>
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <span className="font-bold text-blue-600 shrink-0">6.</span>
-                  <div>
-                    <div className="font-medium">View in Google Sheets or download to your device</div>
+                    <div className="font-medium">Share the link with your team or export to Google Sheets</div>
                   </div>
                 </li>
               </ol>
@@ -2007,6 +2046,174 @@ export default function Home() {
               })}
             </div>
           </Card>
+        )}
+
+        {/* Explore Channels and Playlists - Show when no videos loaded */}
+        {items.length === 0 && !loadingExplore && exploreSections.length > 0 && (
+          <div className="space-y-8">
+            <div className="flex items-center gap-2">
+              <svg className="w-6 h-6 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <h2 className="text-2xl font-bold">Explore Playlists</h2>
+            </div>
+
+            {exploreSections.map((section) => (
+              <div key={section.subject} className="space-y-4">
+                <div className="flex items-center gap-2">
+                  {getSubjectIcon(section.subject, "w-5 h-5 text-foreground")}
+                  <h3 className="text-xl font-semibold">{section.subject}</h3>
+                </div>
+                
+                {/* Grid of 3 channels per row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {section.channels.map((channel) => (
+                    <Card key={channel.channel_id} className="flex flex-col">
+                      <CardHeader className="pb-3">
+                        <Link 
+                          href={`/channel/${channel.channel_id}`}
+                          className="flex items-center gap-2.5 hover:opacity-80 transition-opacity group"
+                        >
+                          {channel.channel_thumbnail ? (
+                            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-muted ring-2 ring-border">
+                              <Image 
+                                src={channel.channel_thumbnail} 
+                                alt={channel.channel_title || ''} 
+                                fill 
+                                sizes="40px"
+                                className="object-cover" 
+                              />
+                            </div>
+                          ) : (
+                            <div className="h-10 w-10 shrink-0 rounded-full bg-muted flex items-center justify-center ring-2 ring-border">
+                              <Image 
+                                src="/youtube.png" 
+                                alt="YouTube" 
+                                width={20}
+                                height={20}
+                                className="opacity-50"
+                              />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-semibold group-hover:text-primary transition-colors truncate">
+                              {channel.channel_title}
+                            </h4>
+                            <p className="text-xs text-muted-foreground">
+                              {channel.playlists.length} {channel.playlists.length === 1 ? 'playlist' : 'playlists'}
+                            </p>
+                          </div>
+                          <svg className="w-4 h-4 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </Link>
+                      </CardHeader>
+                      <CardContent className="flex-1">
+                        {/* Horizontal scrolling carousel */}
+                        <div className="relative -mx-6 px-6">
+                          <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                            {channel.playlists.map((playlist) => (
+                              <Link
+                                key={playlist.id}
+                                href={`/playlist/${playlist.slug}`}
+                                className="block group flex-none w-48"
+                              >
+                                <div className="relative pb-2">
+                                  {/* Stack effect layers */}
+                                  <div className="absolute bottom-0 left-2 right-2 h-2 bg-muted-foreground/30 rounded-md" />
+                                  <div className="absolute bottom-1 left-1 right-1 h-1.5 bg-muted-foreground/40 rounded-md" />
+                                  
+                                  {/* Thumbnail container */}
+                                  <div className="relative aspect-video w-full overflow-hidden rounded-md bg-muted transition-all duration-200 group-hover:scale-[1.03] group-hover:shadow-lg shadow-sm">
+                                    {playlist.thumbnail_url ? (
+                                      <Image
+                                        src={playlist.thumbnail_url}
+                                        alt={playlist.title}
+                                        fill
+                                        sizes="192px"
+                                        className="object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center bg-muted">
+                                        <Image 
+                                          src="/youtube.png" 
+                                          alt="YouTube" 
+                                          width={32}
+                                          height={32}
+                                          className="opacity-30"
+                                        />
+                                      </div>
+                                    )}
+                                    
+                                    {/* Video count badge */}
+                                    {playlist.video_count && (
+                                      <div className="absolute top-1.5 right-1.5 bg-background/95 backdrop-blur-sm text-foreground text-[10px] font-medium px-1.5 py-0.5 rounded border border-border shadow-sm flex items-center gap-0.5">
+                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                          <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                                        </svg>
+                                        {playlist.video_count}
+                                      </div>
+                                    )}
+                                    
+                                    {/* Title overlay */}
+                                    <div className="absolute bottom-0 left-0 right-0 p-1.5">
+                                      <div className="bg-background/98 backdrop-blur-md rounded px-1.5 py-1 border border-border shadow-lg">
+                                        <h5 className="text-[10px] font-semibold truncate text-foreground leading-tight">
+                                          {playlist.title}
+                                        </h5>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Loading skeletons for explore section */}
+        {items.length === 0 && loadingExplore && (
+          <div className="space-y-8">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-6 w-6" />
+              <Skeleton className="h-8 w-64" />
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-5 w-5" />
+                <Skeleton className="h-7 w-32" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <Skeleton className="h-10 w-10 rounded-full" />
+                        <div className="flex-1 space-y-1.5">
+                          <Skeleton className="h-3.5 w-28" />
+                          <Skeleton className="h-3 w-20" />
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex gap-3 overflow-hidden">
+                        {[1, 2, 3].map((j) => (
+                          <Skeleton key={j} className="aspect-video w-48 flex-none rounded-md" />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
         </div>
     </div>
