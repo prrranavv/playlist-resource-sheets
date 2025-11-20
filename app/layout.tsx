@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Image from "next/image";
+import Link from "next/link";
 import { Analytics } from "@vercel/analytics/react";
+import { Suspense } from "react";
+import { LoadingBar } from "@/components/LoadingBar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,8 +35,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <Suspense fallback={null}>
+          <LoadingBar />
+        </Suspense>
         <div className="pt-5 pb-1 flex justify-center">
-          <Image src="/wayground-logo.png" alt="Wayground" width={150} height={24} className="h-6 w-auto" priority />
+          <Link href="/" className="hover:opacity-80 transition-opacity">
+            <Image src="/wayground-logo.png" alt="Wayground" width={150} height={24} className="h-6 w-auto" priority />
+          </Link>
         </div>
         {children}
         <Analytics />

@@ -199,57 +199,6 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('[export-to-sheets-oauth] Formatting applied and unused rows deleted');
-    
-    // Generate copy URL for hyperlinking
-    const copyUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/copy`;
-    
-    // Add hyperlink to cell F1 with text "Copy to your drive"
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: 'F1',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[`=HYPERLINK("${copyUrl}";"Copy to your drive")`]],
-      },
-    });
-    
-    // Format F1 with Poppins font, size 15, bold, black text, no underline
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId: sheetId,
-                startRowIndex: 0,
-                endRowIndex: 1,
-                startColumnIndex: 5, // Column F
-                endColumnIndex: 6,
-              },
-              cell: {
-                userEnteredFormat: {
-                  textFormat: {
-                    fontFamily: 'Poppins',
-                    fontSize: 15,
-                    bold: true,
-                    foregroundColor: {
-                      red: 0,
-                      green: 0,
-                      blue: 0,
-                    },
-                    underline: false,
-                  },
-                },
-              },
-              fields: 'userEnteredFormat(textFormat)',
-            },
-          },
-        ],
-      },
-    });
-
-    console.log('[export-to-sheets-oauth] Hyperlink added to F1');
 
     // Make the sheet publicly viewable (optional)
     try {
@@ -291,8 +240,7 @@ export async function POST(request: NextRequest) {
       success: true,
       spreadsheetId,
       url: sheetUrl,
-      copyUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/copy`, // Special URL that prompts user to make a copy
-      message: 'Sheet created! Click the copy link to save it to your Drive.',
+      message: 'Sheet created successfully!',
     });
 
   } catch (error) {
