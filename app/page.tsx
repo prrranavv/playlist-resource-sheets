@@ -30,6 +30,8 @@ export default function Home() {
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [playlistTitle, setPlaylistTitle] = useState<string | null>(null);
   const [channelTitle, setChannelTitle] = useState<string | null>(null);
+  const [channelId, setChannelId] = useState<string | null>(null);
+  const [channelThumbnail, setChannelThumbnail] = useState<string | null>(null);
   const [grade, setGrade] = useState<string>("6th Grade");
   const [subject, setSubject] = useState<string>("Science");
   const [, setCreatingId] = useState<string | null>(null);
@@ -700,6 +702,9 @@ export default function Home() {
           title: playlistTitle || 'Untitled Playlist',
           description: null,
           channelTitle: channelTitle || null,
+          channelId: channelId || null,
+          channelName: channelTitle || null,
+          channelThumbnail: channelThumbnail || null,
           thumbnailUrl: items[0]?.thumbnailUrl || null,
           grade: grade,
           subject: subject,
@@ -1120,6 +1125,8 @@ export default function Home() {
       setPlaylistId(data.playlistId as string);
       setPlaylistTitle((data.playlistTitle as string) || null);
       setChannelTitle((data.channelTitle as string) || null);
+      setChannelId((data.channelId as string) || null);
+      setChannelThumbnail((data.channelThumbnail as string) || null);
       
       // Check if this data is from the database (already generated)
       if (data.fromDatabase) {
@@ -1549,17 +1556,29 @@ export default function Home() {
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold leading-none flex items-center gap-2 flex-wrap">
+                <span>Create</span>
+                <Image 
+                  src="/wayground-icon.png" 
+                  alt="Wayground" 
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 rounded-full"
+                />
+                <span>Wayground resources from</span>
                 <Image 
                   src="/youtube.png" 
                   alt="YouTube" 
-                  width={32}
-                  height={32}
-                  className="h-8 w-auto"
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 rounded-full"
                 />
-                <h2 className="text-xl font-semibold leading-none">Create Wayground resources from YouTube playlists!</h2>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setHelpOpen(true)}>
+                <span>YouTube playlists!</span>
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => setHelpOpen(true)} className="gap-1.5">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
+                  <path d="M5.07505 4.10001C5.07505 2.91103 6.25727 1.92502 7.50005 1.92502C8.74283 1.92502 9.92505 2.91103 9.92505 4.10001C9.92505 5.19861 9.36782 5.71436 8.61854 6.37884L8.58757 6.4063C7.84481 7.06467 6.92505 7.87995 6.92505 9.5C6.92505 9.81757 7.18248 10.075 7.50005 10.075C7.81761 10.075 8.07505 9.81757 8.07505 9.5C8.07505 8.41517 8.62945 7.90623 9.38156 7.23925L9.40238 7.22079C10.1496 6.55829 11.075 5.73775 11.075 4.10001C11.075 2.12757 9.21869 0.775024 7.50005 0.775024C5.7814 0.775024 3.92505 2.12757 3.92505 4.10001C3.92505 4.41758 4.18249 4.67501 4.50005 4.67501C4.81761 4.67501 5.07505 4.41758 5.07505 4.10001ZM7.50005 13.3575C7.9833 13.3575 8.37505 12.9657 8.37505 12.4825C8.37505 11.9992 7.9833 11.6075 7.50005 11.6075C7.0168 11.6075 6.62505 11.9992 6.62505 12.4825C6.62505 12.9657 7.0168 13.3575 7.50005 13.3575Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                </svg>
                 How to use
               </Button>
             </div>
@@ -1571,7 +1590,7 @@ export default function Home() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
-              <Button onClick={fetchPlaylist} disabled={!input || loading}>
+              <Button onClick={fetchPlaylist} disabled={!input || loading || items.length > 0} size="default" className="whitespace-nowrap">
                 {loading ? "Loading..." : "Show Videos"}
               </Button>
             </div>
@@ -1588,7 +1607,7 @@ export default function Home() {
                   onValueChange={setSubject}
                   placeholder="Select subject"
                   searchPlaceholder="Search subjects..."
-                  className="w-[280px]"
+                  className="w-[160px]"
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -1602,34 +1621,35 @@ export default function Home() {
                   className="w-[160px]"
                 />
               </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button 
+                  size="default" 
+                  variant="default" 
+                  onClick={createResources}
+                  className="whitespace-nowrap"
+                  disabled={
+                    items.length === 0 || 
+                    !(createFlowStatus === "idle" || createFlowStatus === "doneIV") || 
+                    publishing || 
+                    publishingIVs ||
+                    (resourcesPublished && supabaseSaved) // Disable if already generated
+                  }
+                >
+                  {publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` :
+                   createFlowStatus === "creatingA" || createFlowStatus === "creatingIV" ? "Creating resources…" :
+                   createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
+                   createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
+                   (resourcesPublished && supabaseSaved) ? "Already generated" :
+                   "Create resources"}
+                </Button>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3 mt-3">
-              <Button 
-                size="sm" 
-                variant="default" 
-                onClick={createResources} 
-                disabled={
-                  items.length === 0 || 
-                  !(createFlowStatus === "idle" || createFlowStatus === "doneIV") || 
-                  publishing || 
-                  publishingIVs ||
-                  (resourcesPublished && supabaseSaved) // Disable if already generated
-                }
-              >
-                {publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` :
-                 createFlowStatus === "creatingA" || createFlowStatus === "creatingIV" ? "Creating resources…" :
-                 createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
-                 createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
-                 (resourcesPublished && supabaseSaved) ? "Already generated" :
-                 "Create resources"}
-              </Button>
-              {(resourcesPublished && supabaseSaved) && (
-                <p className="text-green-600 text-sm font-medium flex items-center gap-1.5">
-                  <span>✓</span>
-                  <span>This playlist already exists! Find the resources below</span>
-                </p>
-              )}
-            </div>
+            {(resourcesPublished && supabaseSaved) && (
+              <p className="text-green-600 text-sm font-medium flex items-center gap-1.5 mt-3">
+                <span>✓</span>
+                <span>This playlist already exists! Find the resources below</span>
+              </p>
+            )}
             
             {/* Removed per request: do not show repeated assessments created text here */}
           </CardContent>
@@ -1756,7 +1776,12 @@ export default function Home() {
               <div className="flex gap-4">
                 {/* Playlist Thumbnail */}
                 {items[0]?.thumbnailUrl && (
-                  <div className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted">
+                  <a 
+                    href={playlistId ? `https://www.youtube.com/playlist?list=${playlistId}` : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted hover:opacity-80 transition-opacity"
+                  >
                     <Image 
                       src={items[0].thumbnailUrl} 
                       alt={playlistTitle || 'Playlist'} 
@@ -1764,56 +1789,20 @@ export default function Home() {
                       sizes="192px"
                       className="object-cover" 
                     />
-                  </div>
+                  </a>
                 )}
                 
                 {/* Playlist Info */}
-                <div className="flex-1 min-w-0 space-y-3">
-                  {channelTitle && (
-                    <div className="flex items-center gap-2">
-                      <Image 
-                        src="/youtube.png" 
-                        alt="YouTube" 
-                        width={20}
-                        height={20}
-                        className="h-5 w-5"
-                      />
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {channelTitle}
-                      </p>
-                    </div>
-                  )}
-                  
-                  <h1 className="text-2xl font-bold leading-tight">
-                    {playlistTitle || 'Untitled Playlist'}
-                  </h1>
-                  
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {subject && (
-                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                          {subject}
-                        </span>
-                      )}
-                      {grade && (
-                        <span className="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                          {grade}
-                        </span>
-                      )}
-                      <span className="text-sm text-muted-foreground">
-                        • {items.length} videos
-                      </span>
-                    </div>
-                    
-                    {/* Action Buttons */}
-                    <div className="shrink-0 flex items-center gap-2">
+                <div className="flex-1 min-w-0 space-y-3 relative">
+                  {/* Action Buttons - Top Right */}
+                  <div className="absolute top-0 right-0 flex items-center gap-2">
                       {supabaseSaved && playlistUrl && (
                         <Button 
                           size="sm" 
                           variant="outline"
                           onClick={copyPlaylistLink}
                         >
-                          {linkCopied ? '✓ Link Copied!' : '🔗 Share? Copy link'}
+                          {linkCopied ? '✓ Link Copied!' : '🔗 Copy link'}
                         </Button>
                       )}
                       
@@ -1824,20 +1813,21 @@ export default function Home() {
                               size="sm" 
                               variant="default" 
                               disabled={exportingSheets}
+                              className="gap-1.5"
                             >
-                              {exportingSheets ? 'Creating...' : 'Export to Google Sheets'}
-                              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="ml-1 h-3 w-3">
-                                <path d="M4.93179 5.43179C4.75605 5.60753 4.75605 5.89245 4.93179 6.06819C5.10753 6.24392 5.39245 6.24392 5.56819 6.06819L7.49999 4.13638L9.43179 6.06819C9.60753 6.24392 9.89245 6.24392 10.0682 6.06819C10.2439 5.89245 10.2439 5.60753 10.0682 5.43179L7.81819 3.18179C7.73379 3.0974 7.61933 3.04999 7.49999 3.04999C7.38064 3.04999 7.26618 3.0974 7.18179 3.18179L4.93179 5.43179ZM10.0682 9.56819C10.2439 9.39245 10.2439 9.10753 10.0682 8.93179C9.89245 8.75606 9.60753 8.75606 9.43179 8.93179L7.49999 10.8636L5.56819 8.93179C5.39245 8.75606 5.10753 8.75606 4.93179 8.93179C4.75605 9.10753 4.75605 9.39245 4.93179 9.56819L7.18179 11.8182C7.35753 11.9939 7.64245 11.9939 7.81819 11.8182L10.0682 9.56819Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                              </svg>
+                            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
+                              <path d="M3.5 2C3.22386 2 3 2.22386 3 2.5V12.5C3 12.7761 3.22386 13 3.5 13H11.5C11.7761 13 12 12.7761 12 12.5V4.70711L9.29289 2H3.5ZM2 2.5C2 1.67157 2.67157 1 3.5 1H9.5C9.63261 1 9.75979 1.05268 9.85355 1.14645L12.8536 4.14645C12.9473 4.24021 13 4.36739 13 4.5V12.5C13 13.3284 12.3284 14 11.5 14H3.5C2.67157 14 2 13.3284 2 12.5V2.5ZM4.75 7.5C4.75 7.22386 4.97386 7 5.25 7H7V5.25C7 4.97386 7.22386 4.75 7.5 4.75C7.77614 4.75 8 4.97386 8 5.25V7H9.75C10.0261 7 10.25 7.22386 10.25 7.5C10.25 7.77614 10.0261 8 9.75 8H8V9.75C8 10.0261 7.77614 10.25 7.5 10.25C7.22386 10.25 7 10.0261 7 9.75V8H5.25C4.97386 8 4.75 7.77614 4.75 7.5Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                            </svg>
+                            {exportingSheets ? 'Exporting...' : 'Export'}
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-[200px]">
-                            <DropdownMenuItem onClick={handleOpenInNewTab} disabled={exportingSheets}>
-                              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
-                                <path d="M3 2C2.44772 2 2 2.44772 2 3V12C2 12.5523 2.44772 13 3 13H12C12.5523 13 13 12.5523 13 12V8.5C13 8.22386 12.7761 8 12.5 8C12.2239 8 12 8.22386 12 8.5V12H3V3L6.5 3C6.77614 3 7 2.77614 7 2.5C7 2.22386 6.77614 2 6.5 2H3ZM12.8536 2.14645C12.9015 2.19439 12.9377 2.24964 12.9621 2.30861C12.9861 2.36669 12.9996 2.4303 13 2.497L13 2.5V2.50049V5.5C13 5.77614 12.7761 6 12.5 6C12.2239 6 12 5.77614 12 5.5V3.70711L6.85355 8.85355C6.65829 9.04882 6.34171 9.04882 6.14645 8.85355C5.95118 8.65829 5.95118 8.34171 6.14645 8.14645L11.2929 3H9.5C9.22386 3 9 2.77614 9 2.5C9 2.22386 9.22386 2 9.5 2H12.4999H12.5C12.5678 2 12.6324 2.01349 12.6914 2.03794C12.7504 2.06234 12.8056 2.09851 12.8536 2.14645Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                              </svg>
-                              Open in new tab
-                            </DropdownMenuItem>
+                          <DropdownMenuItem onClick={handleOpenInNewTab} disabled={exportingSheets}>
+                            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                              <path d="M3 2C2.44772 2 2 2.44772 2 3V12C2 12.5523 2.44772 13 3 13H12C12.5523 13 13 12.5523 13 12V8.5C13 8.22386 12.7761 8 12.5 8C12.2239 8 12 8.22386 12 8.5V12H3V3L6.5 3C6.77614 3 7 2.77614 7 2.5C7 2.22386 6.77614 2 6.5 2H3ZM12.8536 2.14645C12.9015 2.19439 12.9377 2.24964 12.9621 2.30861C12.9861 2.36669 12.9996 2.4303 13 2.497L13 2.5V2.50049V5.5C13 5.77614 12.7761 6 12.5 6C12.2239 6 12 5.77614 12 5.5V3.70711L6.85355 8.85355C6.65829 9.04882 6.34171 9.04882 6.14645 8.85355C5.95118 8.65829 5.95118 8.34171 6.14645 8.14645L11.2929 3H9.5C9.22386 3 9 2.77614 9 2.5C9 2.22386 9.22386 2 9.5 2H12.4999H12.5C12.5678 2 12.6324 2.01349 12.6914 2.03794C12.7504 2.06234 12.8056 2.09851 12.8536 2.14645Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                            </svg>
+                            View Google Sheet
+                          </DropdownMenuItem>
                             <DropdownMenuItem onClick={handleCopyToDrive} disabled={exportingSheets}>
                               <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
                                 <path d="M1 9.50006C1 10.3285 1.67157 11.0001 2.5 11.0001H4L4 10.0001H2.5C2.22386 10.0001 2 9.7762 2 9.50006L2 2.50006C2 2.22392 2.22386 2.00006 2.5 2.00006L9.5 2.00006C9.77614 2.00006 10 2.22392 10 2.50006V4.00002H11V2.50006C11 1.67163 10.3284 1.00006 9.5 1.00006H2.5C1.67157 1.00006 1 1.67163 1 2.50006V9.50006ZM5.5 4.00002C4.67157 4.00002 4 4.67159 4 5.50002V12.5C4 13.3284 4.67157 14 5.5 14H12.5C13.3284 14 14 13.3284 14 12.5V5.50002C14 4.67159 13.3284 4.00002 12.5 4.00002H5.5ZM5 5.50002C5 5.22388 5.22386 5.00002 5.5 5.00002H12.5C12.7761 5.00002 13 5.22388 13 5.50002V12.5C13 12.7762 12.7761 13 12.5 13H5.5C5.22386 13 5 12.7762 5 12.5V5.50002Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
@@ -1859,7 +1849,58 @@ export default function Home() {
                           💾 Saving...
                         </p>
                       )}
-                    </div>
+                  </div>
+
+                  {channelTitle && (
+                    <a 
+                      href={channelId ? `https://www.youtube.com/channel/${channelId}` : '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                    >
+                      {channelThumbnail ? (
+                        <div className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full bg-muted">
+                          <Image 
+                            src={channelThumbnail} 
+                            alt={channelTitle} 
+                            fill 
+                            sizes="24px"
+                            className="object-cover" 
+                          />
+                        </div>
+                      ) : (
+                        <Image 
+                          src="/youtube.png" 
+                          alt="YouTube" 
+                          width={20}
+                          height={20}
+                          className="h-5 w-5"
+                        />
+                      )}
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {channelTitle}
+                      </p>
+                    </a>
+                  )}
+                  
+                  <h1 className="text-2xl font-bold leading-tight">
+                    {playlistTitle || 'Untitled Playlist'}
+                  </h1>
+                  
+                  <div className="flex flex-wrap items-center gap-2">
+                    {subject && (
+                      <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
+                        {subject}
+                      </span>
+                    )}
+                    {grade && (
+                      <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
+                        {grade}
+                      </span>
+                    )}
+                    <span className="text-sm text-muted-foreground">
+                      • {items.length} videos
+                    </span>
                   </div>
                 </div>
               </div>

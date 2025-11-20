@@ -95,20 +95,49 @@ async function fetchAllPlaylistItems(playlistId: string, apiKey: string): Promis
 async function fetchPlaylistMeta(
   playlistId: string,
   apiKey: string
-): Promise<{ title: string | null; channelTitle: string | null }> {
+): Promise<{ 
+  title: string | null; 
+  channelTitle: string | null;
+  channelId: string | null;
+  channelThumbnail: string | null;
+}> {
   const url = new URL("https://www.googleapis.com/youtube/v3/playlists");
   url.searchParams.set("part", "snippet");
   url.searchParams.set("id", playlistId);
   url.searchParams.set("key", apiKey);
   const res = await fetch(url.toString());
-  if (!res.ok) return { title: null, channelTitle: null };
+  if (!res.ok) return { title: null, channelTitle: null, channelId: null, channelThumbnail: null };
   const data = await res.json();
   const snippet = data?.items?.[0]?.snippet as
-    | { title?: string; channelTitle?: string }
+    | { title?: string; channelTitle?: string; channelId?: string; thumbnails?: { medium?: { url?: string }; default?: { url?: string } } }
     | undefined;
+  
+  const channelId = snippet?.channelId ?? null;
+  let channelThumbnail: string | null = null;
+  
+  // Fetch channel thumbnail if we have channelId
+  if (channelId) {
+    try {
+      const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
+      channelUrl.searchParams.set("part", "snippet");
+      channelUrl.searchParams.set("id", channelId);
+      channelUrl.searchParams.set("key", apiKey);
+      const channelRes = await fetch(channelUrl.toString());
+      if (channelRes.ok) {
+        const channelData = await channelRes.json();
+        const channelSnippet = channelData?.items?.[0]?.snippet;
+        channelThumbnail = channelSnippet?.thumbnails?.medium?.url || channelSnippet?.thumbnails?.default?.url || null;
+      }
+    } catch (err) {
+      console.error('Error fetching channel thumbnail:', err);
+    }
+  }
+  
   return {
     title: snippet?.title ?? null,
     channelTitle: snippet?.channelTitle ?? null,
+    channelId,
+    channelThumbnail,
   };
 }
 
@@ -175,6 +204,9 @@ export async function GET(request: Request) {
           playlistId,
           playlistTitle: existingPlaylist.title,
           channelTitle: existingPlaylist.channel_title,
+          channelId: existingPlaylist.channel_id,
+          channelName: existingPlaylist.channel_name,
+          channelThumbnail: existingPlaylist.channel_thumbnail,
           grade: existingPlaylist.grade,
           subject: existingPlaylist.subject,
           slug: existingPlaylist.slug, // Include the slug for the correct URL
@@ -208,7 +240,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ 
       playlistId, 
       playlistTitle: meta.title, 
-      channelTitle: meta.channelTitle, 
+      channelTitle: meta.channelTitle,
+      channelId: meta.channelId,
+      channelName: meta.channelTitle,
+      channelThumbnail: meta.channelThumbnail,
       items,
       fromDatabase: false, // Flag to indicate this is fresh from YouTube
     });

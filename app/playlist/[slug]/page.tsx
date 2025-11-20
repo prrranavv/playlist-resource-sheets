@@ -58,7 +58,12 @@ export default async function PlaylistPage({ params }: PageProps) {
             <div className="flex gap-4">
               {/* Playlist Thumbnail */}
               {playlist.thumbnail_url && (
-                <div className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted">
+                <a 
+                  href={`https://www.youtube.com/playlist?list=${playlist.youtube_playlist_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted hover:opacity-80 transition-opacity"
+                >
                   <Image 
                     src={playlist.thumbnail_url} 
                     alt={playlist.title} 
@@ -66,57 +71,72 @@ export default async function PlaylistPage({ params }: PageProps) {
                     sizes="192px"
                     className="object-cover" 
                   />
-                </div>
+                </a>
               )}
               
               {/* Playlist Info */}
-              <div className="flex-1 min-w-0 space-y-3">
+              <div className="flex-1 min-w-0 space-y-3 relative">
+                {/* Action Buttons - Top Right */}
+                <div className="absolute top-0 right-0">
+                  <PlaylistActions 
+                    playlistUrl={`/playlist/${playlist.slug}`}
+                    playlistTitle={playlist.title}
+                    playlistId={playlist.youtube_playlist_id}
+                    videos={videos || []}
+                    googleSheetUrl={playlist.google_sheet_url}
+                  />
+                </div>
+
                 {playlist.channel_title && (
-                  <div className="flex items-center gap-2">
-                    <Image 
-                      src="/youtube.png" 
-                      alt="YouTube" 
-                      width={20}
-                      height={20}
-                      className="h-5 w-5"
-                    />
+                  <a 
+                    href={playlist.channel_id ? `https://www.youtube.com/channel/${playlist.channel_id}` : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
+                    {playlist.channel_thumbnail ? (
+                      <div className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full bg-muted">
+                        <Image 
+                          src={playlist.channel_thumbnail} 
+                          alt={playlist.channel_title} 
+                          fill 
+                          sizes="24px"
+                          className="object-cover" 
+                        />
+                      </div>
+                    ) : (
+                      <Image 
+                        src="/youtube.png" 
+                        alt="YouTube" 
+                        width={20}
+                        height={20}
+                        className="h-5 w-5"
+                      />
+                    )}
                     <p className="text-sm font-medium text-muted-foreground">
                       {playlist.channel_title}
                     </p>
-                  </div>
+                  </a>
                 )}
                 
                 <h1 className="text-2xl font-bold leading-tight">
                   {playlist.title}
                 </h1>
                 
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {playlist.subject && (
-                      <span className="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                        {playlist.subject}
-                      </span>
-                    )}
-                    {playlist.grade && (
-                      <span className="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                        {playlist.grade}
-                      </span>
-                    )}
-                    <span className="text-sm text-muted-foreground">
-                      • {playlist.video_count} videos
+                <div className="flex flex-wrap items-center gap-2">
+                  {playlist.subject && (
+                    <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
+                      {playlist.subject}
                     </span>
-                  </div>
-                  
-                  {/* Action Buttons */}
-                  <div className="shrink-0">
-                    <PlaylistActions 
-                      playlistUrl={`/playlist/${playlist.slug}`}
-                      playlistTitle={playlist.title}
-                      playlistId={playlist.youtube_playlist_id}
-                      videos={videos || []}
-                      googleSheetUrl={playlist.google_sheet_url}
-                    />
-                  </div>
+                  )}
+                  {playlist.grade && (
+                    <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
+                      {playlist.grade}
+                    </span>
+                  )}
+                  <span className="text-sm text-muted-foreground">
+                    • {playlist.video_count} videos
+                  </span>
                 </div>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import type { sheets_v4 } from 'googleapis';
 import { supabaseAdmin } from '@/lib/supabase';
 
 // Creates sheets in YOUR account, users get a "Make a copy" link
@@ -41,29 +42,23 @@ export async function POST(request: NextRequest) {
     const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-    // Create a new spreadsheet in user's Drive
-    console.log('[export-to-sheets-oauth] Creating spreadsheet for user');
+    // Template spreadsheet ID and destination folder
+    const templateSpreadsheetId = '1wy8QCQhr6cAIoJdvvvAwmy6FF0_XIKvtBGtN1-QAE8A';
+    const destinationFolderId = '1O9CvfnyfYEALZ_RuNnne9V2C5Wgx8gTT';
     
-    const createResponse = await sheets.spreadsheets.create({
+    // Copy the template spreadsheet
+    console.log('[export-to-sheets-oauth] Copying template spreadsheet for user');
+    
+    const copyResponse = await drive.files.copy({
+      fileId: templateSpreadsheetId,
       requestBody: {
-        properties: {
-          title: `${playlistTitle} - Wayground Resources`,
-        },
-        sheets: [
-          {
-            properties: {
-              title: 'Playlist Resources',
-              gridProperties: {
-                frozenRowCount: 1,
-              },
-            },
-          },
-        ],
+        name: `${playlistTitle} - YouTube links, quizzes, Worksheets and Interactive videos`,
+        parents: [destinationFolderId], // Save to specific folder
       },
     });
 
-    const spreadsheetId = createResponse.data.spreadsheetId as string;
-    console.log('[export-to-sheets-oauth] Created sheet:', spreadsheetId);
+    const spreadsheetId = copyResponse.data.id as string;
+    console.log('[export-to-sheets-oauth] Copied template to new sheet:', spreadsheetId);
 
     // Prepare data rows
     const rows: Array<string[]> = [];
@@ -105,22 +100,110 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    // Insert data
+    // Insert data into columns G:Q
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'A1',
+      range: 'G1',
       valueInputOption: 'RAW',
       requestBody: {
         values: rows,
       },
     });
 
-    console.log('[export-to-sheets-oauth] Data inserted');
+    console.log('[export-to-sheets-oauth] Data inserted into columns G:Q');
 
-    // Get the actual sheet ID from the created spreadsheet
-    const sheetId = createResponse.data.sheets?.[0]?.properties?.sheetId || 0;
+    // Get the actual sheet ID from the spreadsheet
+    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    const sheetId = spreadsheetInfo.data.sheets?.[0]?.properties?.sheetId || 0;
+    const sheetProperties = spreadsheetInfo.data.sheets?.[0]?.properties;
+    const totalRows = sheetProperties?.gridProperties?.rowCount || 1000;
     
-    // Format the sheet
+    // Calculate number of rows to keep (header + data rows)
+    const rowsToKeep = rows.length;
+    const rowsToDelete = totalRows - rowsToKeep;
+    
+    // Prepare batch update requests
+    const batchRequests: sheets_v4.Schema$Request[] = [
+      // Format the header row for columns G:Q (indices 6-16)
+      {
+        repeatCell: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: 6, // Column G
+            endColumnIndex: 17,  // Column Q (exclusive end)
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: {
+                red: 0.2,
+                green: 0.6,
+                blue: 0.86,
+              },
+              textFormat: {
+                bold: true,
+                foregroundColor: {
+                  red: 1,
+                  green: 1,
+                  blue: 1,
+                },
+              },
+              horizontalAlignment: 'CENTER',
+            },
+          },
+          fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+        },
+      },
+      {
+        autoResizeDimensions: {
+          dimensions: {
+            sheetId: sheetId,
+            dimension: 'COLUMNS',
+            startIndex: 6,  // Column G
+            endIndex: 17,   // Column Q (exclusive end)
+          },
+        },
+      },
+    ];
+    
+    // Delete unused rows if there are any
+    if (rowsToDelete > 0) {
+      batchRequests.push({
+        deleteDimension: {
+          range: {
+            sheetId: sheetId,
+            dimension: 'ROWS',
+            startIndex: rowsToKeep,
+            endIndex: totalRows,
+          },
+        },
+      });
+    }
+    
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: batchRequests,
+      },
+    });
+
+    console.log('[export-to-sheets-oauth] Formatting applied and unused rows deleted');
+    
+    // Generate copy URL for hyperlinking
+    const copyUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/copy`;
+    
+    // Add hyperlink to cell F1 with text "Copy to your drive"
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'F1',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[`=HYPERLINK("${copyUrl}";"Copy to your drive")`]],
+      },
+    });
+    
+    // Format F1 with Poppins font, size 15, bold, black text, no underline
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -131,43 +214,32 @@ export async function POST(request: NextRequest) {
                 sheetId: sheetId,
                 startRowIndex: 0,
                 endRowIndex: 1,
+                startColumnIndex: 5, // Column F
+                endColumnIndex: 6,
               },
               cell: {
                 userEnteredFormat: {
-                  backgroundColor: {
-                    red: 0.2,
-                    green: 0.6,
-                    blue: 0.86,
-                  },
                   textFormat: {
+                    fontFamily: 'Poppins',
+                    fontSize: 15,
                     bold: true,
                     foregroundColor: {
-                      red: 1,
-                      green: 1,
-                      blue: 1,
+                      red: 0,
+                      green: 0,
+                      blue: 0,
                     },
+                    underline: false,
                   },
-                  horizontalAlignment: 'CENTER',
                 },
               },
-              fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
-            },
-          },
-          {
-            autoResizeDimensions: {
-              dimensions: {
-                sheetId: sheetId,
-                dimension: 'COLUMNS',
-                startIndex: 0,
-                endIndex: 11,
-              },
+              fields: 'userEnteredFormat(textFormat)',
             },
           },
         ],
       },
     });
 
-    console.log('[export-to-sheets-oauth] Formatting applied');
+    console.log('[export-to-sheets-oauth] Hyperlink added to F1');
 
     // Make the sheet publicly viewable (optional)
     try {
@@ -184,7 +256,6 @@ export async function POST(request: NextRequest) {
     }
 
     const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-    const copyUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/copy`;
 
     // Save the Google Sheet URL to Supabase
     if (playlistId) {
@@ -210,7 +281,7 @@ export async function POST(request: NextRequest) {
       success: true,
       spreadsheetId,
       url: sheetUrl,
-      copyUrl, // Special URL that prompts user to make a copy
+      copyUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/copy`, // Special URL that prompts user to make a copy
       message: 'Sheet created! Click the copy link to save it to your Drive.',
     });
 
