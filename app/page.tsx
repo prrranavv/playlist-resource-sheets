@@ -182,13 +182,10 @@ export default function Home() {
     async function autoLogin() {
       try {
         console.log('[ui:auto-login] Starting auto-login');
-        const res = await fetch("/api/wayground/login", {
+        // Use auto-login endpoint that reads credentials from environment variables
+        const res = await fetch("/api/wayground/auto-login", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ 
-            username: "margaret.1759843072426@qtility.com", 
-            password: "9i9]KDCNb[" 
-          }),
         });
         
         const data = await res.json();
@@ -1191,6 +1188,17 @@ export default function Home() {
         console.log('[ui:fetchPlaylist] This playlist was already generated! Loading existing data...');
         setWasLoadedFromDatabase(true);
         
+        // Use the slug from the database
+        if (data.slug) {
+          const playlistSlug = `/playlist/${data.slug}`;
+          setPlaylistUrl(playlistSlug);
+          
+          // Redirect to the existing playlist page immediately
+          console.log(`[ui:fetchPlaylist] Redirecting to existing playlist: ${playlistSlug}`);
+          router.push(playlistSlug);
+          return; // Exit early to prevent further processing
+        }
+        
         // Set grade and subject from saved data if available
         if (data.grade) setGrade(data.grade as string);
         if (data.subject) setSubject(data.subject as string);
@@ -1252,11 +1260,6 @@ export default function Home() {
         setResourcesPublished(true);
         setShowOutput(true);
         setSupabaseSaved(true);
-        
-        // Use the slug from the database
-        if (data.slug) {
-          setPlaylistUrl(`/playlist/${data.slug}`);
-        }
         
         console.log('[ui:fetchPlaylist] Loaded existing playlist data successfully!');
       } else {
