@@ -1185,19 +1185,20 @@ export default function Home() {
       
       // Check if this data is from the database (already generated)
       if (data.fromDatabase) {
-        console.log('[ui:fetchPlaylist] This playlist was already generated! Loading existing data...');
-        setWasLoadedFromDatabase(true);
+        console.log('[ui:fetchPlaylist] This playlist was already generated! Redirecting to existing playlist...');
         
-        // Use the slug from the database
+        // Use the slug from the database - redirect immediately if slug exists
         if (data.slug) {
           const playlistSlug = `/playlist/${data.slug}`;
-          setPlaylistUrl(playlistSlug);
-          
-          // Redirect to the existing playlist page immediately
           console.log(`[ui:fetchPlaylist] Redirecting to existing playlist: ${playlistSlug}`);
+          // Redirect immediately without setting any state to avoid re-renders
           router.push(playlistSlug);
           return; // Exit early to prevent further processing
         }
+        
+        // Fallback: if slug is missing, set state and continue (shouldn't happen normally)
+        console.warn('[ui:fetchPlaylist] Playlist exists but slug is missing, loading data instead');
+        setWasLoadedFromDatabase(true);
         
         // Set grade and subject from saved data if available
         if (data.grade) setGrade(data.grade as string);
