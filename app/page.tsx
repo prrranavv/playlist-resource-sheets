@@ -33,7 +33,7 @@ export default function Home() {
   const [, setFetchedQuizIds] = useState<string[]>([]);
   const [, setFetchingAssessments] = useState(false);
   const [quizMetaById, setQuizMetaById] = useState<Record<string, { title: string; quizGenKey?: string | null }>>({});
-  const [draftVersionById, setDraftVersionById] = useState<Record<string, string | null>>({});
+  const [, setDraftVersionById] = useState<Record<string, string | null>>({});
   const [publishing, setPublishing] = useState(false);
   const [publishProgress, setPublishProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
   const [phase, setPhase] = useState<"idle"|"videos"|"creating"|"waiting"|"can_fetch"|"fetched"|"published">("idle");
@@ -43,7 +43,7 @@ export default function Home() {
   const [, setBulkCreatingInteractive] = useState(false);
   const [, setInteractiveProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
   const [interactiveCreatedById, setInteractiveCreatedById] = useState<Record<string, boolean>>({});
-  const [interactiveInfoByVideoId, setInteractiveInfoByVideoId] = useState<Record<string, { quizId: string; draftVersion: string }>>({});
+  const [, setInteractiveInfoByVideoId] = useState<Record<string, { quizId: string; draftVersion: string }>>({});
   const [interactiveMetaByVideoId, setInteractiveMetaByVideoId] = useState<Record<string, { quizId: string; draftVersion: string; title: string }>>({});
   // const [_fetchingInteractive, _setFetchingInteractive] = useState(false);
   const [, setInteractivePhase] = useState<"idle"|"waiting"|"can_fetch">("idle");
@@ -72,6 +72,10 @@ export default function Home() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
+  const [savingToSupabase, setSavingToSupabase] = useState(false);
+  const [supabaseSaved, setSupabaseSaved] = useState(false);
+  const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Subject options
   const subjectOptions = [
@@ -170,19 +174,19 @@ export default function Home() {
     autoLogin();
   }, []); // Empty dependency array - runs once on mount
 
-  function buildAssessmentPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
-    const pairs: Array<{ quizId: string; draftVersion: string }> = [];
-    for (const it of items) {
-      const vKey = quizKeyById[it.id];
-      if (!vKey) continue;
-      const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
-      if (!entry) continue;
-      const [qId] = entry;
-      const dV = draftVersionById[qId];
-      if (qId && dV) pairs.push({ quizId: qId, draftVersion: dV });
-    }
-    return pairs;
-  }
+  // function buildAssessmentPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
+  //   const pairs: Array<{ quizId: string; draftVersion: string }> = [];
+  //   for (const it of items) {
+  //     const vKey = quizKeyById[it.id];
+  //     if (!vKey) continue;
+  //     const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
+  //     if (!entry) continue;
+  //     const [qId] = entry;
+  //     const dV = draftVersionById[qId];
+  //     if (qId && dV) pairs.push({ quizId: qId, draftVersion: dV });
+  //   }
+  //   return pairs;
+  // }
 
   function pause(ms: number) { return new Promise<void>((res) => setTimeout(res, ms)); }
 
@@ -604,6 +608,114 @@ export default function Home() {
     // Automatically show output after everything is complete
     setShowOutput(true);
     console.log("[ui:createResources] COMPLETE - All resources created and published! Output displayed.");
+    
+    // Save to Supabase with the actual data
+    await saveToSupabase(assessmentData.quizMetaById, ivData.ivPairs, localQuizKeyById);
+  }
+
+  async function copyPlaylistLink() {
+    if (!playlistUrl) return;
+    
+    try {
+      const fullUrl = `${window.location.origin}${playlistUrl}`;
+      await navigator.clipboard.writeText(fullUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
+  }
+
+  async function saveToSupabase(
+    assessmentMetaById: Record<string, { title: string; quizGenKey?: string | null }>,
+    ivPairs: Array<{ quizId: string; draftVersion: string; videoId: string; title: string }>,
+    videoIdToQuizKey: Record<string, string>
+  ) {
+    try {
+      setSavingToSupabase(true);
+      console.log("[ui:saveToSupabase] Starting Supabase save...");
+      console.log("[ui:saveToSupabase] Assessment metadata keys:", Object.keys(assessmentMetaById));
+      console.log("[ui:saveToSupabase] IV pairs count:", ivPairs.length);
+      console.log("[ui:saveToSupabase] Video to quiz key mappings:", Object.keys(videoIdToQuizKey).length);
+
+      // Build a map from videoId to assessment quizId
+      const videoIdToAssessmentId: Record<string, string> = {};
+      for (const [videoId, quizGenKey] of Object.entries(videoIdToQuizKey)) {
+        // Find the assessment quiz ID that has this quizGenKey
+        const entry = Object.entries(assessmentMetaById).find(([, meta]) => meta.quizGenKey === quizGenKey);
+        if (entry) {
+          videoIdToAssessmentId[videoId] = entry[0];
+          console.log(`[ui:saveToSupabase] Mapped video ${videoId} to assessment ${entry[0]}`);
+        }
+      }
+
+      // Build a map from videoId to IV quizId
+      const videoIdToIVId: Record<string, string> = {};
+      for (const iv of ivPairs) {
+        videoIdToIVId[iv.videoId] = iv.quizId;
+        console.log(`[ui:saveToSupabase] Mapped video ${iv.videoId} to IV ${iv.quizId}`);
+      }
+
+      // Prepare video data
+      const videos = items.map((item, index) => {
+        const assessmentQuizId = videoIdToAssessmentId[item.id] || null;
+        const assessmentLink = assessmentQuizId 
+          ? `https://wayground.com/admin/quiz/${assessmentQuizId}`
+          : null;
+        
+        const interactiveVideoQuizId = videoIdToIVId[item.id] || null;
+        const interactiveVideoLink = interactiveVideoQuizId 
+          ? `https://wayground.com/admin/quiz/${interactiveVideoQuizId}`
+          : null;
+
+        console.log(`[ui:saveToSupabase] Video ${item.id}: assessment=${assessmentQuizId}, iv=${interactiveVideoQuizId}`);
+
+        return {
+          youtubeVideoId: item.id,
+          title: item.title,
+          thumbnailUrl: item.thumbnailUrl,
+          assessmentQuizId,
+          assessmentLink,
+          interactiveVideoQuizId,
+          interactiveVideoLink,
+          orderIndex: index
+        };
+      });
+
+      // Save to Supabase
+      const response = await fetch('/api/save-playlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          youtubePlaylistId: playlistId || '',
+          title: playlistTitle || 'Untitled Playlist',
+          description: null,
+          channelTitle: channelTitle || null,
+          thumbnailUrl: items[0]?.thumbnailUrl || null,
+          grade: grade,
+          subject: subject,
+          videos
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to save to Supabase');
+      }
+
+      console.log("[ui:saveToSupabase] Successfully saved to Supabase:", result);
+      setSupabaseSaved(true);
+      setPlaylistUrl(result.url);
+      console.log(`[ui:saveToSupabase] Playlist available at: ${result.url}`);
+
+    } catch (err) {
+      console.error("[ui:saveToSupabase] Error saving to Supabase:", err);
+      // Don't block the flow if Supabase save fails
+      // Just log the error
+    } finally {
+      setSavingToSupabase(false);
+    }
   }
 
   function buildAssessmentPublishPairsWithData(
@@ -628,38 +740,38 @@ export default function Home() {
     return pairs;
   }
 
-  function buildIvPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
-    const pairs: Array<{ quizId: string; draftVersion: string }> = [];
-    for (const [videoId, info] of Object.entries(interactiveInfoByVideoId)) {
-      if (!interactiveCreatedById[videoId]) continue;
-      if (info?.quizId && info?.draftVersion) pairs.push({ quizId: info.quizId, draftVersion: info.draftVersion });
-    }
-    return pairs;
-  }
+  // function buildIvPublishPairs(): Array<{ quizId: string; draftVersion: string }> {
+  //   const pairs: Array<{ quizId: string; draftVersion: string }> = [];
+  //   for (const [videoId, info] of Object.entries(interactiveInfoByVideoId)) {
+  //     if (!interactiveCreatedById[videoId]) continue;
+  //     if (info?.quizId && info?.draftVersion) pairs.push({ quizId: info.quizId, draftVersion: info.draftVersion });
+  //   }
+  //   return pairs;
+  // }
 
-  function findVideoTitleForAssessment(quizId: string): string | null {
-    // Find the quizGenKey for this assessment
-    const meta = quizMetaById[quizId];
-    if (!meta?.quizGenKey) return null;
-    
-    // Find the video that has this quizGenKey
-    const videoId = Object.entries(quizKeyById).find(([, key]) => key === meta.quizGenKey)?.[0];
-    if (!videoId) return null;
-    
-    // Find the video title from items
-    const video = items.find(item => item.id === videoId);
-    return video?.title || null;
-  }
+  // function findVideoTitleForAssessment(quizId: string): string | null {
+  //   // Find the quizGenKey for this assessment
+  //   const meta = quizMetaById[quizId];
+  //   if (!meta?.quizGenKey) return null;
+  //   
+  //   // Find the video that has this quizGenKey
+  //   const videoId = Object.entries(quizKeyById).find(([, key]) => key === meta.quizGenKey)?.[0];
+  //   if (!videoId) return null;
+  //   
+  //   // Find the video title from items
+  //   const video = items.find(item => item.id === videoId);
+  //   return video?.title || null;
+  // }
 
-  function findVideoTitleForIV(quizId: string): string | null {
-    // Find the video ID that maps to this IV quizId
-    const videoId = Object.entries(interactiveInfoByVideoId).find(([, info]) => info.quizId === quizId)?.[0];
-    if (!videoId) return null;
-    
-    // Find the video title from items
-    const video = items.find(item => item.id === videoId);
-    return video?.title || null;
-  }
+  // function findVideoTitleForIV(quizId: string): string | null {
+  //   // Find the video ID that maps to this IV quizId
+  //   const videoId = Object.entries(interactiveInfoByVideoId).find(([, info]) => info.quizId === quizId)?.[0];
+  //   if (!videoId) return null;
+  //   
+  //   // Find the video title from items
+  //   const video = items.find(item => item.id === videoId);
+  //   return video?.title || null;
+  // }
 
   async function exportCsv() {
     console.log(`[ui:exportCsv] Exporting CSV for ${items.length} videos`);
@@ -821,12 +933,77 @@ export default function Home() {
       if (!res.ok) {
         throw new Error(data?.error || "Failed to fetch playlist");
       }
+      
       console.log(`[ui:fetchPlaylist] Success: ${data.items.length} videos, playlist="${data.playlistTitle}"`);
       setPlaylistId(data.playlistId as string);
       setPlaylistTitle((data.playlistTitle as string) || null);
       setChannelTitle((data.channelTitle as string) || null);
-      setItems((data.items as PlaylistItem[]).sort((a, b) => a.position - b.position));
-      setPhase("videos");
+      
+      // Check if this data is from the database (already generated)
+      if (data.fromDatabase) {
+        console.log('[ui:fetchPlaylist] This playlist was already generated! Loading existing data...');
+        
+        // Set grade and subject from saved data if available
+        if (data.grade) setGrade(data.grade as string);
+        if (data.subject) setSubject(data.subject as string);
+        
+        // Process items and populate state with existing assessment/IV data
+        const processedItems = (data.items as PlaylistItem[]).sort((a, b) => a.position - b.position);
+        setItems(processedItems);
+        
+        // Build state maps for assessments and interactive videos
+        const newQuizKeyById: Record<string, string> = {};
+        const newQuizMetaById: Record<string, { title: string; quizGenKey?: string | null }> = {};
+        const newInteractiveMetaByVideoId: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
+        const newInteractiveCreatedById: Record<string, boolean> = {};
+        
+        for (const item of processedItems) {
+          const itemAny = item as { id: string; title: string; assessmentQuizId?: string; assessmentLink?: string; interactiveVideoQuizId?: string; interactiveVideoLink?: string };
+          
+          // Process assessment data
+          if (itemAny.assessmentQuizId) {
+            // Create a pseudo quizGenKey based on video ID for matching
+            const pseudoKey = `existing-${item.id}`;
+            newQuizKeyById[item.id] = pseudoKey;
+            newQuizMetaById[itemAny.assessmentQuizId] = {
+              title: item.title,
+              quizGenKey: pseudoKey,
+            };
+          }
+          
+          // Process interactive video data
+          if (itemAny.interactiveVideoQuizId) {
+            newInteractiveMetaByVideoId[item.id] = {
+              quizId: itemAny.interactiveVideoQuizId,
+              draftVersion: '1', // Placeholder since we don't store this
+              title: item.title,
+            };
+            newInteractiveCreatedById[item.id] = true;
+          }
+        }
+        
+        setQuizKeyById(newQuizKeyById);
+        setQuizMetaById(newQuizMetaById);
+        setInteractiveMetaByVideoId(newInteractiveMetaByVideoId);
+        setInteractiveCreatedById(newInteractiveCreatedById);
+        
+        // Set the phase to show output directly
+        setPhase("published");
+        setResourcesPublished(true);
+        setShowOutput(true);
+        setSupabaseSaved(true);
+        
+        // Use the slug from the database
+        if (data.slug) {
+          setPlaylistUrl(`/playlist/${data.slug}`);
+        }
+        
+        console.log('[ui:fetchPlaylist] Loaded existing playlist data successfully!');
+      } else {
+        console.log('[ui:fetchPlaylist] New playlist - ready to generate resources');
+        setItems((data.items as PlaylistItem[]).sort((a, b) => a.position - b.position));
+        setPhase("videos");
+      }
     } catch (e: unknown) {
       const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: string }).message) : "Something went wrong";
       console.error(`[ui:fetchPlaylist] Error: ${msg}`);
@@ -835,6 +1012,15 @@ export default function Home() {
       setLoading(false);
     }
   }
+  
+  // Helper function to generate slug (same as in save-playlist API)
+  // function generateSlug(title: string): string {
+  //   return title
+  //     .toLowerCase()
+  //     .replace(/[^a-z0-9]+/g, '-')
+  //     .replace(/^-+|-+$/g, '')
+  //     .substring(0, 100);
+  // }
 
   function findQuizGenKey(value: unknown): string | undefined {
     if (!value) return undefined;
@@ -1224,13 +1410,31 @@ export default function Home() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3 mt-3">
-              <Button size="sm" variant="default" onClick={createResources} disabled={items.length === 0 || !(createFlowStatus === "idle" || createFlowStatus === "doneIV") || publishing || publishingIVs }>
+              <Button 
+                size="sm" 
+                variant="default" 
+                onClick={createResources} 
+                disabled={
+                  items.length === 0 || 
+                  !(createFlowStatus === "idle" || createFlowStatus === "doneIV") || 
+                  publishing || 
+                  publishingIVs ||
+                  (resourcesPublished && supabaseSaved) // Disable if already generated
+                }
+              >
                 {publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` :
                  createFlowStatus === "creatingA" || createFlowStatus === "creatingIV" ? "Creating resources…" :
                  createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
                  createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
+                 (resourcesPublished && supabaseSaved) ? "Already generated" :
                  "Create resources"}
               </Button>
+              {(resourcesPublished && supabaseSaved) && (
+                <p className="text-green-600 text-sm font-medium flex items-center gap-1.5">
+                  <span>✓</span>
+                  <span>This playlist was already generated! All resources are displayed below.</span>
+                </p>
+              )}
             </div>
             
             {/* Removed per request: do not show repeated assessments created text here */}
@@ -1356,11 +1560,36 @@ export default function Home() {
                   Playlist: {playlistTitle || "-"} ⋅ Channel: {channelTitle || "-"}
                 </p>
               )}
-              {resourcesPublished && (
-                <Button size="sm" variant="default" onClick={exportCsv}>
-                  Export CSV
-                </Button>
-              )}
+              <div className="flex items-center gap-3">
+                {resourcesPublished && (
+                  <Button size="sm" variant="default" onClick={exportCsv}>
+                    Export CSV
+                  </Button>
+                )}
+                {savingToSupabase && (
+                  <p className="text-sm text-muted-foreground">
+                    💾 Saving to database...
+                  </p>
+                )}
+                {supabaseSaved && playlistUrl && (
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={copyPlaylistLink}
+                    className="gap-2"
+                  >
+                    {linkCopied ? (
+                      <>
+                        ✓ Link Copied!
+                      </>
+                    ) : (
+                      <>
+                        🔗 Share? Copy link
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="rounded-md border divide-y">
               {items.map((item) => {

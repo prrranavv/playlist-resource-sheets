@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
 
 type YouTubePlaylistItem = {
   id: string;
@@ -123,12 +124,6 @@ export async function GET(request: Request) {
 
   console.log(`[api:playlist] Input: ${urlOrId.substring(0, 100)}`);
 
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) {
-    console.error('[api:playlist] Error: YOUTUBE_API_KEY not configured');
-    return NextResponse.json({ error: "Server missing YOUTUBE_API_KEY env var" }, { status: 500 });
-  }
-
   const playlistId = extractPlaylistId(urlOrId);
   if (!playlistId) {
     console.log('[api:playlist] Error: Invalid playlist URL or ID format');
@@ -137,6 +132,71 @@ export async function GET(request: Request) {
 
   console.log(`[api:playlist] Extracted playlist ID: ${playlistId}`);
 
+  // Check if playlist already exists in Supabase
+  try {
+    console.log('[api:playlist] Checking if playlist exists in Supabase...');
+    const { data: existingPlaylist, error: playlistError } = await supabaseAdmin
+      .from('playlists')
+      .select('*')
+      .eq('youtube_playlist_id', playlistId)
+      .single();
+
+    if (existingPlaylist && !playlistError) {
+      console.log(`[api:playlist] Found existing playlist in Supabase: ${existingPlaylist.title}`);
+      
+      // Fetch associated videos
+      const { data: videos, error: videosError } = await supabaseAdmin
+        .from('playlist_videos')
+        .select('*')
+        .eq('playlist_id', existingPlaylist.id)
+        .order('order_index', { ascending: true });
+
+      if (videosError) {
+        console.error('[api:playlist] Error fetching videos from Supabase:', videosError);
+      } else if (videos) {
+        console.log(`[api:playlist] Found ${videos.length} videos in Supabase`);
+        
+        // Transform Supabase data to match YouTube API response format
+        const items = videos.map(video => ({
+          id: video.youtube_video_id,
+          title: video.title,
+          thumbnailUrl: video.thumbnail_url || '',
+          publishedAt: video.created_at,
+          position: video.order_index,
+          videoUrl: `https://www.youtube.com/watch?v=${video.youtube_video_id}&list=${playlistId}`,
+          // Include the assessment and IV data
+          assessmentQuizId: video.assessment_quiz_id,
+          assessmentLink: video.assessment_link,
+          interactiveVideoQuizId: video.interactive_video_quiz_id,
+          interactiveVideoLink: video.interactive_video_link,
+        }));
+
+        return NextResponse.json({
+          playlistId,
+          playlistTitle: existingPlaylist.title,
+          channelTitle: existingPlaylist.channel_title,
+          grade: existingPlaylist.grade,
+          subject: existingPlaylist.subject,
+          slug: existingPlaylist.slug, // Include the slug for the correct URL
+          items,
+          fromDatabase: true, // Flag to indicate this came from the database
+        });
+      }
+    } else {
+      console.log('[api:playlist] Playlist not found in Supabase, fetching from YouTube...');
+    }
+  } catch (dbError) {
+    console.error('[api:playlist] Error checking Supabase:', dbError);
+    // Continue to YouTube API if Supabase check fails
+  }
+
+  // If not in Supabase, fetch from YouTube API
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) {
+    console.error('[api:playlist] Error: YOUTUBE_API_KEY not configured');
+    return NextResponse.json({ error: "Server missing YOUTUBE_API_KEY env var" }, { status: 500 });
+  }
+
   try {
     console.log('[api:playlist] Fetching playlist data from YouTube API');
     const [items, meta] = await Promise.all([
@@ -144,7 +204,13 @@ export async function GET(request: Request) {
       fetchPlaylistMeta(playlistId, apiKey),
     ]);
     console.log(`[api:playlist] Success: Fetched ${items.length} items, title="${meta.title}", channel="${meta.channelTitle}"`);
-    return NextResponse.json({ playlistId, playlistTitle: meta.title, channelTitle: meta.channelTitle, items });
+    return NextResponse.json({ 
+      playlistId, 
+      playlistTitle: meta.title, 
+      channelTitle: meta.channelTitle, 
+      items,
+      fromDatabase: false, // Flag to indicate this is fresh from YouTube
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error(`[api:playlist] Error fetching playlist: ${message}`);
