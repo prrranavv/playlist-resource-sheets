@@ -84,6 +84,7 @@ export default function Home() {
   const [savingToSupabase, setSavingToSupabase] = useState(false);
   const [supabaseSaved, setSupabaseSaved] = useState(false);
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
+  const [wasLoadedFromDatabase, setWasLoadedFromDatabase] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [exportingSheets, setExportingSheets] = useState(false);
   const [exportedSheetUrl, setExportedSheetUrl] = useState<string | null>(null);
@@ -1136,6 +1137,7 @@ export default function Home() {
       // Check if this data is from the database (already generated)
       if (data.fromDatabase) {
         console.log('[ui:fetchPlaylist] This playlist was already generated! Loading existing data...');
+        setWasLoadedFromDatabase(true);
         
         // Set grade and subject from saved data if available
         if (data.grade) setGrade(data.grade as string);
@@ -1207,6 +1209,7 @@ export default function Home() {
         console.log('[ui:fetchPlaylist] Loaded existing playlist data successfully!');
       } else {
         console.log('[ui:fetchPlaylist] New playlist - ready to generate resources');
+        setWasLoadedFromDatabase(false);
         setItems((data.items as PlaylistItem[]).sort((a, b) => a.position - b.position));
         setPhase("videos");
       }
@@ -1648,7 +1651,7 @@ export default function Home() {
                    createFlowStatus === "creatingA" || createFlowStatus === "creatingIV" ? "Creating resources…" :
                    createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
                    createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
-                   (resourcesPublished && supabaseSaved) ? "Already generated" :
+                   (resourcesPublished && supabaseSaved && wasLoadedFromDatabase) ? "Already generated" :
                    "Create resources"}
                 </Button>
               </div>
@@ -1659,7 +1662,7 @@ export default function Home() {
                 <span>Generating Google Sheet with all resources...</span>
               </p>
             )}
-            {(resourcesPublished && supabaseSaved && !generatingSheet) && (
+            {(resourcesPublished && supabaseSaved && wasLoadedFromDatabase && !generatingSheet) && (
               <p className="text-green-600 text-sm font-medium flex items-center gap-1.5 mt-3">
                 <span>✓</span>
                 <span>This playlist already exists! Find the resources below</span>
@@ -1766,16 +1769,6 @@ export default function Home() {
                   </div>
                 </li>
               </ol>
-              <div className="pt-4">
-                <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-                  <iframe
-                    src="https://www.loom.com/embed/019a992b0ac84bedb1cdce517dc51017?sid=2e3f3f3e-3f3e-4f3e-8f3e-3f3e3f3e3f3e"
-                    frameBorder="0"
-                    allowFullScreen
-                    className="absolute top-0 left-0 w-full h-full rounded-lg"
-                  ></iframe>
-                </div>
-              </div>
               <div className="flex justify-end pt-4 border-t">
                 <Button onClick={() => setHelpOpen(false)}>
                   Got it!
@@ -1859,11 +1852,6 @@ export default function Home() {
                         </DropdownMenu>
                       )}
                       
-                      {savingToSupabase && (
-                        <p className="text-sm text-muted-foreground">
-                          💾 Saving...
-                        </p>
-                      )}
                   </div>
 
                   {channelTitle && (

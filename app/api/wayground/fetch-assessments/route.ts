@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
     const url = new URL(SEARCH_ENDPOINT);
     url.searchParams.set("from", "0");
-    url.searchParams.set("size", "1000");
+    url.searchParams.set("size", "2000");
 
     const body = {
       searchTerm: "",
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
 
     const map = new Map<string, QuizSummary>();
     collectQuizSummaries(data, map);
-    const quizzes = Array.from(map.values()).slice(0, 1000);
+    const quizzes = Array.from(map.values()).slice(0, 2000);
 
     console.log(`[api:wayground:fetch-assessments] Found ${quizzes.length} assessments`);
 

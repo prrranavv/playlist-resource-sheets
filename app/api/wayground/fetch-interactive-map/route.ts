@@ -22,7 +22,7 @@ export async function POST(request: Request) {
         // Step 1: paginate through drafts with activityTypes:["video-quiz"] and collect quiz ids + draft versions + createdAt + titles
         const candidates = new Map<string, { draftVersion: string | null; createdAt?: string; title?: string }>(); // quizId -> {draftVersion, createdAt, title}
     let from = 0;
-    const size = 1000;
+    const size = 2000;
     let pagesFetched = 0;
     console.log('[api:wayground:fetch-interactive-map] Fetching interactive videos from Wayground');
     while (pagesFetched < 20) { // up to 2000 items
@@ -100,8 +100,8 @@ export async function POST(request: Request) {
           title: data.title
         }));
         
-        console.log(`[api:wayground:fetch-interactive-map] Found ${interactive.length} interactive videos (returning first 1000)`);
-        return NextResponse.json({ interactive: interactive.slice(0, 1000) });
+        console.log(`[api:wayground:fetch-interactive-map] Found ${interactive.length} interactive videos (returning first 2000)`);
+        return NextResponse.json({ interactive: interactive.slice(0, 2000) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error(`[api:wayground:fetch-interactive-map] Error: ${message}`);
