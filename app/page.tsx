@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import Image from "next/image";
 import { Combobox } from "@/components/ui/combobox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type PlaylistItem = {
   id: string;
@@ -76,6 +82,9 @@ export default function Home() {
   const [supabaseSaved, setSupabaseSaved] = useState(false);
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [exportingSheets, setExportingSheets] = useState(false);
+  const [exportedSheetUrl, setExportedSheetUrl] = useState<string | null>(null);
+  const [exportedCopyUrl, setExportedCopyUrl] = useState<string | null>(null);
 
   // Subject options
   const subjectOptions = [
@@ -709,12 +718,62 @@ export default function Home() {
       setPlaylistUrl(result.url);
       console.log(`[ui:saveToSupabase] Playlist available at: ${result.url}`);
 
+      // Automatically create Google Sheet in background
+      console.log("[ui:saveToSupabase] Auto-creating Google Sheet...");
+      createGoogleSheetInBackground(videos);
+
     } catch (err) {
       console.error("[ui:saveToSupabase] Error saving to Supabase:", err);
       // Don't block the flow if Supabase save fails
       // Just log the error
     } finally {
       setSavingToSupabase(false);
+    }
+  }
+
+  async function createGoogleSheetInBackground(videos: Array<{
+    youtubeVideoId: string;
+    title: string;
+    thumbnailUrl?: string;
+    assessmentQuizId: string | null;
+    assessmentLink: string | null;
+    interactiveVideoQuizId: string | null;
+    interactiveVideoLink: string | null;
+    orderIndex: number;
+  }>) {
+    try {
+      console.log('[ui:createGoogleSheetInBackground] Creating Google Sheet automatically...');
+      
+      const response = await fetch('/api/export-to-sheets-oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playlistTitle: playlistTitle || 'Untitled Playlist',
+          playlistId: playlistId || '',
+          videos: videos.map(v => ({
+            youtube_video_id: v.youtubeVideoId,
+            title: v.title,
+            assessment_quiz_id: v.assessmentQuizId,
+            assessment_link: v.assessmentLink,
+            interactive_video_quiz_id: v.interactiveVideoQuizId,
+            interactive_video_link: v.interactiveVideoLink,
+            order_index: v.orderIndex,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setExportedSheetUrl(data.url);
+        setExportedCopyUrl(data.copyUrl);
+        console.log('[ui:createGoogleSheetInBackground] Google Sheet created successfully:', data.url);
+      } else {
+        console.error('[ui:createGoogleSheetInBackground] Failed to create sheet:', data.error);
+      }
+    } catch (error) {
+      console.error('[ui:createGoogleSheetInBackground] Error creating sheet:', error);
+      // Don't fail the flow if sheet creation fails
     }
   }
 
@@ -772,6 +831,129 @@ export default function Home() {
   //   const video = items.find(item => item.id === videoId);
   //   return video?.title || null;
   // }
+
+  async function exportToGoogleSheets() {
+    console.log(`[ui:exportToGoogleSheets] Exporting to Google Sheets for ${items.length} videos`);
+    setExportingSheets(true);
+
+    try {
+      // Build videos array with same structure as database
+      const videosForExport = items.map((item, index) => {
+        const vKey = quizKeyById[item.id];
+        let assessmentQuizId = null;
+        let assessmentLink = null;
+        
+        if (vKey) {
+          const entry = Object.entries(quizMetaById).find(([, m]) => m.quizGenKey === vKey);
+          if (entry) {
+            const [qId] = entry;
+            assessmentQuizId = qId;
+            assessmentLink = `https://wayground.com/admin/quiz/${qId}`;
+          }
+        }
+
+        const ivMeta = interactiveMetaByVideoId[item.id];
+        const interactiveVideoQuizId = ivMeta?.quizId || null;
+        const interactiveVideoLink = interactiveVideoQuizId ? `https://wayground.com/admin/quiz/${interactiveVideoQuizId}` : null;
+
+        return {
+          youtube_video_id: item.id,
+          title: item.title,
+          assessment_quiz_id: assessmentQuizId,
+          assessment_link: assessmentLink,
+          interactive_video_quiz_id: interactiveVideoQuizId,
+          interactive_video_link: interactiveVideoLink,
+          order_index: index,
+        };
+      });
+
+      const response = await fetch('/api/export-to-sheets-oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playlistTitle: playlistTitle || 'Untitled Playlist',
+          playlistId: playlistId || '',
+          videos: videosForExport,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to export to Google Sheets');
+      }
+
+      setExportedSheetUrl(data.url);
+      setExportedCopyUrl(data.copyUrl);
+      
+      console.log(`[ui:exportToGoogleSheets] Successfully exported. Copy URL: ${data.copyUrl}`);
+      
+      // Return the URLs for immediate use
+      return { url: data.url, copyUrl: data.copyUrl };
+    } catch (error) {
+      console.error('[ui:exportToGoogleSheets] Error:', error);
+      alert(error instanceof Error ? error.message : 'Failed to export to Google Sheets');
+      return null;
+    } finally {
+      setExportingSheets(false);
+    }
+  }
+
+  const handleOpenInNewTab = async () => {
+    console.log('[handleOpenInNewTab] Starting...');
+    const sheetUrl = exportedSheetUrl;
+    console.log('[handleOpenInNewTab] Current sheetUrl from state:', sheetUrl);
+    
+    if (sheetUrl) {
+      // Sheet already exists, open it directly
+      console.log('[handleOpenInNewTab] Opening pre-created sheet:', sheetUrl);
+      window.open(sheetUrl, '_blank');
+    } else {
+      // Fallback: Sheet doesn't exist yet, create it now
+      console.log('[handleOpenInNewTab] Sheet not created yet, opening blank window first...');
+      const newWindow = window.open('about:blank', '_blank');
+      
+      console.log('[handleOpenInNewTab] Calling exportToGoogleSheets...');
+      const result = await exportToGoogleSheets();
+      console.log('[handleOpenInNewTab] Got result:', result);
+      
+      if (result && result.url && newWindow) {
+        console.log('[handleOpenInNewTab] Navigating window to:', result.url);
+        newWindow.location.href = result.url;
+      } else if (newWindow) {
+        console.error('[handleOpenInNewTab] No URL available, closing window');
+        newWindow.close();
+      }
+    }
+  };
+
+  const handleCopyToDrive = async () => {
+    console.log('[handleCopyToDrive] Starting...');
+    const copyUrl = exportedCopyUrl;
+    console.log('[handleCopyToDrive] Current copyUrl from state:', copyUrl);
+    
+    if (copyUrl) {
+      // Sheet already exists, open copy URL directly
+      console.log('[handleCopyToDrive] Opening pre-created copy URL:', copyUrl);
+      window.open(copyUrl, '_blank');
+    } else {
+      // Fallback: Sheet doesn't exist yet, create it now
+      console.log('[handleCopyToDrive] Sheet not created yet, opening blank window first...');
+      const newWindow = window.open('about:blank', '_blank');
+      
+      console.log('[handleCopyToDrive] Calling exportToGoogleSheets...');
+      const result = await exportToGoogleSheets();
+      console.log('[handleCopyToDrive] Got result:', result);
+      
+      if (result && result.copyUrl && newWindow) {
+        console.log('[handleCopyToDrive] Navigating window to:', result.copyUrl);
+        newWindow.location.href = result.copyUrl;
+      } else if (newWindow) {
+        console.error('[handleCopyToDrive] No URL available, closing window');
+        newWindow.close();
+      }
+    }
+  };
 
   async function exportCsv() {
     console.log(`[ui:exportCsv] Exporting CSV for ${items.length} videos`);
@@ -946,6 +1128,18 @@ export default function Home() {
         // Set grade and subject from saved data if available
         if (data.grade) setGrade(data.grade as string);
         if (data.subject) setSubject(data.subject as string);
+        
+        // Set Google Sheet URLs if they exist
+        if (data.googleSheetUrl) {
+          const sheetUrl = data.googleSheetUrl as string;
+          setExportedSheetUrl(sheetUrl);
+          // Generate the copy URL from the sheet URL
+          const spreadsheetId = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1];
+          if (spreadsheetId) {
+            setExportedCopyUrl(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/copy`);
+          }
+          console.log('[ui:fetchPlaylist] Loaded existing Google Sheet URL:', sheetUrl);
+        }
         
         // Process items and populate state with existing assessment/IV data
         const processedItems = (data.items as PlaylistItem[]).sort((a, b) => a.position - b.position);
@@ -1432,7 +1626,7 @@ export default function Home() {
               {(resourcesPublished && supabaseSaved) && (
                 <p className="text-green-600 text-sm font-medium flex items-center gap-1.5">
                   <span>✓</span>
-                  <span>This playlist was already generated! All resources are displayed below.</span>
+                  <span>This playlist already exists! Find the resources below</span>
                 </p>
               )}
             </div>
@@ -1499,50 +1693,54 @@ export default function Home() {
                   ×
                 </button>
               </div>
-              <ol className="space-y-4">
+              <ol className="space-y-3.5">
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">1.</span>
                   <div>
-                    <div className="font-medium mb-1">Paste YouTube playlist URL or ID</div>
-                    <div className="text-sm text-gray-600">
-                      Example: <code className="bg-gray-50 px-1.5 py-0.5 rounded text-xs">PLSQl0a2vh4HCKeX3g-Mj5wXS0nfDeDSGS</code>
-                    </div>
+                    <div className="font-medium">Enter your YouTube playlist and load videos</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">2.</span>
                   <div>
-                    <div className="font-medium">Click &ldquo;Show Videos&rdquo; to load the playlist</div>
+                    <div className="font-medium">Choose subject and grade level</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">3.</span>
                   <div>
-                    <div className="font-medium">Select Subject and Grade</div>
+                    <div className="font-medium">Create resources (takes 4-5 min, keep tab open)</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">4.</span>
                   <div>
-                    <div className="font-medium mb-1">Click &ldquo;Create resources&rdquo;</div>
-                    <div className="text-sm text-gray-600">Takes ~4-5 minutes. <span className="text-red-600 font-semibold">Do not close or refresh the tab.</span></div>
+                    <div className="font-medium">Your assessments and videos are ready to use!</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">5.</span>
                   <div>
-                    <div className="font-medium mb-1">Resources are automatically created and published!</div>
-                    <div className="text-sm text-gray-600">Assessment and Interactive Video icons will appear on each video when complete.</div>
+                    <div className="font-medium">Share the page with your team</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">6.</span>
                   <div>
-                    <div className="font-medium mb-1">Click &ldquo;Export CSV&rdquo; to download the data</div>
-                    <div className="text-sm text-gray-600">Optional: The button appears above the video list when resources are ready.</div>
+                    <div className="font-medium">View in Google Sheets or download to your device</div>
                   </div>
                 </li>
               </ol>
+              <div className="pt-4">
+                <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+                  <iframe
+                    src="https://www.loom.com/embed/019a992b0ac84bedb1cdce517dc51017?sid=2e3f3f3e-3f3e-4f3e-8f3e-3f3e3f3e3f3e"
+                    frameBorder="0"
+                    allowFullScreen
+                    className="absolute top-0 left-0 w-full h-full rounded-lg"
+                  ></iframe>
+                </div>
+              </div>
               <div className="flex justify-end pt-4 border-t">
                 <Button onClick={() => setHelpOpen(false)}>
                   Got it!
@@ -1553,45 +1751,122 @@ export default function Home() {
         )}
 
         {items.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between px-2">
-              {(playlistTitle || channelTitle) && (
-                <p className="text-sm text-muted-foreground">
-                  Playlist: {playlistTitle || "-"} ⋅ Channel: {channelTitle || "-"}
-                </p>
-              )}
-              <div className="flex items-center gap-3">
-                {resourcesPublished && (
-                  <Button size="sm" variant="default" onClick={exportCsv}>
-                    Export CSV
-                  </Button>
+          <Card>
+            <CardContent className="py-0">
+              <div className="flex gap-4">
+                {/* Playlist Thumbnail */}
+                {items[0]?.thumbnailUrl && (
+                  <div className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted">
+                    <Image 
+                      src={items[0].thumbnailUrl} 
+                      alt={playlistTitle || 'Playlist'} 
+                      fill 
+                      sizes="192px"
+                      className="object-cover" 
+                    />
+                  </div>
                 )}
-                {savingToSupabase && (
-                  <p className="text-sm text-muted-foreground">
-                    💾 Saving to database...
-                  </p>
-                )}
-                {supabaseSaved && playlistUrl && (
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={copyPlaylistLink}
-                    className="gap-2"
-                  >
-                    {linkCopied ? (
-                      <>
-                        ✓ Link Copied!
-                      </>
-                    ) : (
-                      <>
-                        🔗 Share? Copy link
-                      </>
-                    )}
-                  </Button>
-                )}
+                
+                {/* Playlist Info */}
+                <div className="flex-1 min-w-0 space-y-3">
+                  {channelTitle && (
+                    <div className="flex items-center gap-2">
+                      <Image 
+                        src="/youtube.png" 
+                        alt="YouTube" 
+                        width={20}
+                        height={20}
+                        className="h-5 w-5"
+                      />
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {channelTitle}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <h1 className="text-2xl font-bold leading-tight">
+                    {playlistTitle || 'Untitled Playlist'}
+                  </h1>
+                  
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {subject && (
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                          {subject}
+                        </span>
+                      )}
+                      {grade && (
+                        <span className="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                          {grade}
+                        </span>
+                      )}
+                      <span className="text-sm text-muted-foreground">
+                        • {items.length} videos
+                      </span>
+                    </div>
+                    
+                    {/* Action Buttons */}
+                    <div className="shrink-0 flex items-center gap-2">
+                      {supabaseSaved && playlistUrl && (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={copyPlaylistLink}
+                        >
+                          {linkCopied ? '✓ Link Copied!' : '🔗 Share? Copy link'}
+                        </Button>
+                      )}
+                      
+                      {resourcesPublished && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              disabled={exportingSheets}
+                            >
+                              {exportingSheets ? 'Creating...' : 'Export to Google Sheets'}
+                              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="ml-1 h-3 w-3">
+                                <path d="M4.93179 5.43179C4.75605 5.60753 4.75605 5.89245 4.93179 6.06819C5.10753 6.24392 5.39245 6.24392 5.56819 6.06819L7.49999 4.13638L9.43179 6.06819C9.60753 6.24392 9.89245 6.24392 10.0682 6.06819C10.2439 5.89245 10.2439 5.60753 10.0682 5.43179L7.81819 3.18179C7.73379 3.0974 7.61933 3.04999 7.49999 3.04999C7.38064 3.04999 7.26618 3.0974 7.18179 3.18179L4.93179 5.43179ZM10.0682 9.56819C10.2439 9.39245 10.2439 9.10753 10.0682 8.93179C9.89245 8.75606 9.60753 8.75606 9.43179 8.93179L7.49999 10.8636L5.56819 8.93179C5.39245 8.75606 5.10753 8.75606 4.93179 8.93179C4.75605 9.10753 4.75605 9.39245 4.93179 9.56819L7.18179 11.8182C7.35753 11.9939 7.64245 11.9939 7.81819 11.8182L10.0682 9.56819Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                              </svg>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-[200px]">
+                            <DropdownMenuItem onClick={handleOpenInNewTab} disabled={exportingSheets}>
+                              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                                <path d="M3 2C2.44772 2 2 2.44772 2 3V12C2 12.5523 2.44772 13 3 13H12C12.5523 13 13 12.5523 13 12V8.5C13 8.22386 12.7761 8 12.5 8C12.2239 8 12 8.22386 12 8.5V12H3V3L6.5 3C6.77614 3 7 2.77614 7 2.5C7 2.22386 6.77614 2 6.5 2H3ZM12.8536 2.14645C12.9015 2.19439 12.9377 2.24964 12.9621 2.30861C12.9861 2.36669 12.9996 2.4303 13 2.497L13 2.5V2.50049V5.5C13 5.77614 12.7761 6 12.5 6C12.2239 6 12 5.77614 12 5.5V3.70711L6.85355 8.85355C6.65829 9.04882 6.34171 9.04882 6.14645 8.85355C5.95118 8.65829 5.95118 8.34171 6.14645 8.14645L11.2929 3H9.5C9.22386 3 9 2.77614 9 2.5C9 2.22386 9.22386 2 9.5 2H12.4999H12.5C12.5678 2 12.6324 2.01349 12.6914 2.03794C12.7504 2.06234 12.8056 2.09851 12.8536 2.14645Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                              </svg>
+                              Open in new tab
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleCopyToDrive} disabled={exportingSheets}>
+                              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                                <path d="M1 9.50006C1 10.3285 1.67157 11.0001 2.5 11.0001H4L4 10.0001H2.5C2.22386 10.0001 2 9.7762 2 9.50006L2 2.50006C2 2.22392 2.22386 2.00006 2.5 2.00006L9.5 2.00006C9.77614 2.00006 10 2.22392 10 2.50006V4.00002H11V2.50006C11 1.67163 10.3284 1.00006 9.5 1.00006H2.5C1.67157 1.00006 1 1.67163 1 2.50006V9.50006ZM5.5 4.00002C4.67157 4.00002 4 4.67159 4 5.50002V12.5C4 13.3284 4.67157 14 5.5 14H12.5C13.3284 14 14 13.3284 14 12.5V5.50002C14 4.67159 13.3284 4.00002 12.5 4.00002H5.5ZM5 5.50002C5 5.22388 5.22386 5.00002 5.5 5.00002H12.5C12.7761 5.00002 13 5.22388 13 5.50002V12.5C13 12.7762 12.7761 13 12.5 13H5.5C5.22386 13 5 12.7762 5 12.5V5.50002Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                              </svg>
+                              Copy to my Drive
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={exportCsv}>
+                              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4">
+                                <path d="M7.50005 1.04999C7.74858 1.04999 7.95005 1.25146 7.95005 1.49999V8.41359L10.1819 6.18179C10.3576 6.00605 10.6425 6.00605 10.8182 6.18179C10.994 6.35753 10.994 6.64245 10.8182 6.81819L7.81825 9.81819C7.64251 9.99392 7.35759 9.99392 7.18185 9.81819L4.18185 6.81819C4.00611 6.64245 4.00611 6.35753 4.18185 6.18179C4.35759 6.00605 4.64251 6.00605 4.81825 6.18179L7.05005 8.41359V1.49999C7.05005 1.25146 7.25152 1.04999 7.50005 1.04999ZM2.5 10C2.77614 10 3 10.2239 3 10.5V12C3 12.5539 3.44565 13 3.99635 13H11.0012C11.5529 13 12 12.5528 12 12V10.5C12 10.2239 12.2239 10 12.5 10C12.7761 10 13 10.2239 13 10.5V12C13 13.1041 12.1062 14 11.0012 14H3.99635C2.89019 14 2 13.103 2 12V10.5C2 10.2239 2.22386 10 2.5 10Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                              </svg>
+                              Download CSV
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                      
+                      {savingToSupabase && (
+                        <p className="text-sm text-muted-foreground">
+                          💾 Saving...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="rounded-md border divide-y">
+            </CardContent>
+
+            {/* Videos List */}
+            <div className="divide-y border-t">
               {items.map((item) => {
                 const videoKey = quizKeyById[item.id];
                 const matchedId = videoKey ? Object.entries(quizMetaById).find(([, meta]) => meta.quizGenKey === videoKey)?.[0] : undefined;
@@ -1685,7 +1960,7 @@ export default function Home() {
                 );
               })}
             </div>
-          </div>
+          </Card>
         )}
         </div>
     </div>

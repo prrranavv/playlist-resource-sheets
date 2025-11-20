@@ -34,6 +34,7 @@ export type Database = {
           subject: string | null;
           video_count: number;
           slug: string;
+          google_sheet_url: string | null;
         };
         Insert: {
           id?: string;
@@ -47,6 +48,7 @@ export type Database = {
           subject?: string | null;
           video_count?: number;
           slug: string;
+          google_sheet_url?: string | null;
         };
         Update: {
           id?: string;
@@ -60,6 +62,7 @@ export type Database = {
           subject?: string | null;
           video_count?: number;
           slug?: string;
+          google_sheet_url?: string | null;
         };
       };
       playlist_videos: {

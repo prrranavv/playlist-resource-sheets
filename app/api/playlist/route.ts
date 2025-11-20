@@ -178,6 +178,7 @@ export async function GET(request: Request) {
           grade: existingPlaylist.grade,
           subject: existingPlaylist.subject,
           slug: existingPlaylist.slug, // Include the slug for the correct URL
+          googleSheetUrl: existingPlaylist.google_sheet_url, // Include the Google Sheet URL if it exists
           items,
           fromDatabase: true, // Flag to indicate this came from the database
         });

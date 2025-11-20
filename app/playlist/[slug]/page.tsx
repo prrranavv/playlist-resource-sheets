@@ -52,7 +52,7 @@ export default async function PlaylistPage({ params }: PageProps) {
   return (
     <div className="min-h-screen font-sans p-6 sm:p-10">
       <div className="mx-auto max-w-4xl space-y-6">
-        {/* Header Section */}
+        {/* Playlist Card with Videos */}
         <Card>
           <CardContent className="py-0">
             <div className="flex gap-4">
@@ -114,17 +114,17 @@ export default async function PlaylistPage({ params }: PageProps) {
                       playlistTitle={playlist.title}
                       playlistId={playlist.youtube_playlist_id}
                       videos={videos || []}
+                      googleSheetUrl={playlist.google_sheet_url}
                     />
                   </div>
                 </div>
               </div>
             </div>
           </CardContent>
-        </Card>
 
-        {videos && videos.length > 0 && (
-          <div className="space-y-2">
-            <div className="rounded-md border divide-y">
+          {/* Videos List */}
+          {videos && videos.length > 0 && (
+            <div className="divide-y border-t">
               {videos.map((video) => {
                 const assessmentLink = video.assessment_link || "";
                 const ivLink = video.interactive_video_link || "";
@@ -211,8 +211,8 @@ export default async function PlaylistPage({ params }: PageProps) {
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </Card>
 
         {(!videos || videos.length === 0) && (
           <Card>
