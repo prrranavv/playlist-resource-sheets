@@ -1799,7 +1799,7 @@ export default function Home() {
                 <li className="flex gap-3">
                   <span className="font-bold text-blue-600 shrink-0">3.</span>
                   <div>
-                    <div className="font-medium">Click "Create Resources" (takes 4-5 min)</div>
+                    <div className="font-medium">Click &quot;Create Resources&quot; (takes 4-5 min)</div>
                   </div>
                 </li>
                 <li className="flex gap-3">
