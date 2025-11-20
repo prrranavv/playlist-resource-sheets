@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Image from "next/image";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default function RootLayout({
           <Image src="/wayground-logo.png" alt="Wayground" width={150} height={24} className="h-6 w-auto" priority />
         </div>
         {children}
+        <Analytics />
       </body>
     </html>
   );
