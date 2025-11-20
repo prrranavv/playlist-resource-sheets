@@ -7,7 +7,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { playlistTitle, playlistId, videos } = body;
+    const { playlistTitle, playlistId, videos, channelTitle } = body;
 
     if (!playlistTitle || !videos || !Array.isArray(videos)) {
       return NextResponse.json(
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const copyResponse = await drive.files.copy({
       fileId: templateSpreadsheetId,
       requestBody: {
-        name: `${playlistTitle} - YouTube links, quizzes, Worksheets and Interactive videos`,
+        name: `${channelTitle || playlistTitle} - Wayground Videos, Quizzes & Worksheets!`,
         parents: [destinationFolderId], // Save to specific folder
       },
     });
@@ -124,6 +124,16 @@ export async function POST(request: NextRequest) {
     
     // Prepare batch update requests
     const batchRequests: sheets_v4.Schema$Request[] = [
+      // Rename the sheet tab to the playlist title
+      {
+        updateSheetProperties: {
+          properties: {
+            sheetId: sheetId,
+            title: playlistTitle,
+          },
+          fields: 'title',
+        },
+      },
       // Format the header row for columns G:Q (indices 6-16)
       {
         repeatCell: {

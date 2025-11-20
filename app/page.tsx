@@ -759,6 +759,7 @@ export default function Home() {
         body: JSON.stringify({
           playlistTitle: playlistTitle || 'Untitled Playlist',
           playlistId: playlistId || '',
+          channelTitle: channelTitle || 'Unknown Channel',
           videos: videos.map(v => ({
             youtube_video_id: v.youtubeVideoId,
             title: v.title,

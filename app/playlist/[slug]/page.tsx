@@ -84,6 +84,7 @@ export default async function PlaylistPage({ params }: PageProps) {
                     playlistId={playlist.youtube_playlist_id}
                     videos={videos || []}
                     googleSheetUrl={playlist.google_sheet_url}
+                    channelTitle={playlist.channel_title}
                   />
                 </div>
 

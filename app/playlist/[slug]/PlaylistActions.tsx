@@ -26,9 +26,10 @@ interface PlaylistActionsProps {
   playlistId: string;
   videos: Video[];
   googleSheetUrl?: string | null;
+  channelTitle?: string | null;
 }
 
-export default function PlaylistActions({ playlistUrl, playlistTitle, playlistId, videos, googleSheetUrl }: PlaylistActionsProps) {
+export default function PlaylistActions({ playlistUrl, playlistTitle, playlistId, videos, googleSheetUrl, channelTitle }: PlaylistActionsProps) {
   const [linkCopied, setLinkCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
   
@@ -63,6 +64,7 @@ export default function PlaylistActions({ playlistUrl, playlistTitle, playlistId
         body: JSON.stringify({
           playlistTitle,
           playlistId,
+          channelTitle,
           videos,
         }),
       });
