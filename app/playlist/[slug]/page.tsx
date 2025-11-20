@@ -146,8 +146,9 @@ export default async function PlaylistPage({ params }: PageProps) {
           {videos && videos.length > 0 && (
             <div className="divide-y border-t">
               {videos.map((video) => {
-                const assessmentLink = video.assessment_link || "";
-                const ivLink = video.interactive_video_link || "";
+                const utmParams = `utm_source=community&utm_medium=appplaylistpage&utm_term=${encodeURIComponent(playlist.title || '')}`;
+                const assessmentLink = video.assessment_link ? `${video.assessment_link}${video.assessment_link.includes('?') ? '&' : '?'}${utmParams}` : "";
+                const ivLink = video.interactive_video_link ? `${video.interactive_video_link}${video.interactive_video_link.includes('?') ? '&' : '?'}${utmParams}` : "";
                 
                 return (
                   <div key={video.id} className="p-2 hover:bg-muted">

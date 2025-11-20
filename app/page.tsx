@@ -58,6 +58,7 @@ export default function Home() {
   const [interactiveWaitRemaining, setInteractiveWaitRemaining] = useState<number>(0);
   const [publishingIVs, setPublishingIVs] = useState(false);
   const [publishIVProgress, setPublishIVProgress] = useState<{done:number; total:number}>({ done: 0, total: 0 });
+  const [generatingSheet, setGeneratingSheet] = useState(false);
   const [createFlowStatus, setCreateFlowStatus] = useState<
     | "idle"
     | "creatingA"
@@ -233,15 +234,15 @@ export default function Home() {
     if (res.ok && Array.isArray(data?.interactive)) {
       const allIVs = data.interactive as Array<{ quizId: string; draftVersion?: string | null; createdAt?: string; title?: string }>;
       
-      // Filter for IVs created in the last 5 minutes
-      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+      // Filter for IVs created in the last 2.5 minutes
+      const twoAndHalfMinutesAgo = Date.now() - (2.5 * 60 * 1000);
       const recentIVs = allIVs.filter(iv => {
         if (!iv.createdAt) return false;
         const createdTime = new Date(iv.createdAt).getTime();
-        return createdTime >= fiveMinutesAgo;
+        return createdTime >= twoAndHalfMinutesAgo;
       });
       
-      console.log(`[ui:fetchInteractives] Found ${allIVs.length} total IVs, ${recentIVs.length} created in last 5 minutes`);
+      console.log(`[ui:fetchInteractives] Found ${allIVs.length} total IVs, ${recentIVs.length} created in last 2.5 minutes`);
       
       if (recentIVs.length > 0) {
         // Fetch video IDs and titles for recent IVs with exponential backoff
@@ -614,14 +615,14 @@ export default function Home() {
     }
     console.log(`[ui:publish] All ${ivPairs.length} IVs published`);
     setPublishingIVs(false);
-    setResourcesPublished(true);
     
-    // Automatically show output after everything is complete
-    setShowOutput(true);
-    console.log("[ui:createResources] COMPLETE - All resources created and published! Output displayed.");
-    
-    // Save to Supabase with the actual data
+    // Save to Supabase with the actual data FIRST
     await saveToSupabase(assessmentData.quizMetaById, ivData.ivPairs, localQuizKeyById);
+    
+    // THEN mark as complete and show output (sheet will already be created by saveToSupabase)
+    setResourcesPublished(true);
+    setShowOutput(true);
+    console.log("[ui:createResources] COMPLETE - All resources created, published, and sheet generated! Output displayed.");
   }
 
   async function copyPlaylistLink() {
@@ -723,9 +724,10 @@ export default function Home() {
       setPlaylistUrl(result.url);
       console.log(`[ui:saveToSupabase] Playlist available at: ${result.url}`);
 
-      // Automatically create Google Sheet in background
-      console.log("[ui:saveToSupabase] Auto-creating Google Sheet...");
-      createGoogleSheetInBackground(videos);
+      // Automatically create Google Sheet and WAIT for it to complete
+      console.log("[ui:saveToSupabase] Creating Google Sheet...");
+      await createGoogleSheetInBackground(videos);
+      console.log("[ui:saveToSupabase] Google Sheet creation complete!");
 
     } catch (err) {
       console.error("[ui:saveToSupabase] Error saving to Supabase:", err);
@@ -747,6 +749,7 @@ export default function Home() {
     orderIndex: number;
   }>) {
     try {
+      setGeneratingSheet(true);
       console.log('[ui:createGoogleSheetInBackground] Creating Google Sheet automatically...');
       
       const response = await fetch('/api/export-to-sheets-oauth', {
@@ -779,6 +782,8 @@ export default function Home() {
     } catch (error) {
       console.error('[ui:createGoogleSheetInBackground] Error creating sheet:', error);
       // Don't fail the flow if sheet creation fails
+    } finally {
+      setGeneratingSheet(false);
     }
   }
 
@@ -1432,19 +1437,19 @@ export default function Home() {
       }
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
-      // Filter for quizzes created in the last 5 minutes
-      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+      // Filter for quizzes created in the last 2.5 minutes
+      const twoAndHalfMinutesAgo = Date.now() - (2.5 * 60 * 1000);
       const recentQuizzes = Array.isArray(data?.quizzes) 
         ? (data.quizzes as Array<{ id: string; title: string; createdAt?: string }>)
             .filter(q => {
               if (!q.createdAt) return false;
               const createdTime = new Date(q.createdAt).getTime();
-              return createdTime >= fiveMinutesAgo;
+              return createdTime >= twoAndHalfMinutesAgo;
             })
         : [];
       
       const recentIds = recentQuizzes.map(q => q.id);
-      console.log(`[ui:fetchAssessments] Found ${ids.length} total assessments, ${recentIds.length} created in last 5 minutes`);
+      console.log(`[ui:fetchAssessments] Found ${ids.length} total assessments, ${recentIds.length} created in last 2.5 minutes`);
 
       if (recentIds.length > 0) {
         // Process one ID at a time with exponential backoff to avoid rate limiting
@@ -1632,10 +1637,14 @@ export default function Home() {
                     !(createFlowStatus === "idle" || createFlowStatus === "doneIV") || 
                     publishing || 
                     publishingIVs ||
+                    savingToSupabase ||
+                    generatingSheet ||
                     (resourcesPublished && supabaseSaved) // Disable if already generated
                   }
                 >
-                  {publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` :
+                  {generatingSheet ? "Generating Google Sheet…" :
+                   savingToSupabase ? "Saving…" :
+                   publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` :
                    createFlowStatus === "creatingA" || createFlowStatus === "creatingIV" ? "Creating resources…" :
                    createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
                    createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
@@ -1644,7 +1653,13 @@ export default function Home() {
                 </Button>
               </div>
             </div>
-            {(resourcesPublished && supabaseSaved) && (
+            {generatingSheet && (
+              <p className="text-blue-600 text-sm font-medium flex items-center gap-1.5 mt-3">
+                <span>📄</span>
+                <span>Generating Google Sheet with all resources...</span>
+              </p>
+            )}
+            {(resourcesPublished && supabaseSaved && !generatingSheet) && (
               <p className="text-green-600 text-sm font-medium flex items-center gap-1.5 mt-3">
                 <span>✓</span>
                 <span>This playlist already exists! Find the resources below</span>
@@ -1913,8 +1928,9 @@ export default function Home() {
                 const matchedId = videoKey ? Object.entries(quizMetaById).find(([, meta]) => meta.quizGenKey === videoKey)?.[0] : undefined;
                 // const _matched = matchedId ? quizMetaById[matchedId] : undefined;
                 const ivMeta = interactiveMetaByVideoId[item.id];
-                const assessmentLink = matchedId ? `https://wayground.com/admin/quiz/${matchedId}` : "";
-                const ivLink = ivMeta?.quizId ? `https://wayground.com/admin/interactive-video/${ivMeta.quizId}` : "";
+                const utmParams = `utm_source=community&utm_medium=appplaylistpage&utm_term=${encodeURIComponent(playlistTitle || '')}`;
+                const assessmentLink = matchedId ? `https://wayground.com/admin/quiz/${matchedId}?${utmParams}` : "";
+                const ivLink = ivMeta?.quizId ? `https://wayground.com/admin/interactive-video/${ivMeta.quizId}?${utmParams}` : "";
                 
                 return (
                   <div key={item.id} className="p-2 hover:bg-muted">
