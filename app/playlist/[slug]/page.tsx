@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { getSubjectIcon } from '@/lib/icons';
+import { getYouTubeThumbnailUrl } from '@/lib/utils';
 
 interface PageProps {
   params: Promise<{
@@ -232,22 +233,27 @@ export default async function PlaylistPage({ params }: PageProps) {
           <CardContent className="py-0">
             <div className="flex gap-4">
               {/* Playlist Thumbnail */}
-              {playlist.thumbnail_url && (
-                <a 
-                  href={`https://www.youtube.com/playlist?list=${playlist.youtube_playlist_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted hover:opacity-80 transition-opacity"
-                >
-                  <Image 
-                    src={playlist.thumbnail_url} 
-                    alt={playlist.title} 
-                    fill 
-                    sizes="192px"
-                    className="object-cover" 
-                  />
-                </a>
-              )}
+              {(() => {
+                // For playlist thumbnail, try to use the first video's thumbnail
+                const firstVideoId = videos && videos.length > 0 ? videos[0].youtube_video_id : null;
+                const thumbnailUrl = getYouTubeThumbnailUrl(playlist.thumbnail_url, firstVideoId);
+                return thumbnailUrl ? (
+                  <a 
+                    href={`https://www.youtube.com/playlist?list=${playlist.youtube_playlist_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted hover:opacity-80 transition-opacity"
+                  >
+                    <Image 
+                      src={thumbnailUrl} 
+                      alt={playlist.title} 
+                      fill 
+                      sizes="192px"
+                      className="object-cover" 
+                    />
+                  </a>
+                ) : null;
+              })()}
               
               {/* Playlist Info */}
               <div className="flex-1 min-w-0 space-y-3">
@@ -352,19 +358,22 @@ export default async function PlaylistPage({ params }: PageProps) {
                               rel="noreferrer" 
                               className="flex items-center gap-3 hover:underline min-w-0"
                             >
-                              {video.thumbnail_url ? (
-                                <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded bg-muted">
-                                  <Image 
-                                    src={video.thumbnail_url} 
-                                    alt={video.title} 
-                                    fill 
-                                    sizes="64px" 
-                                    className="object-cover" 
-                                  />
-                                </div>
-                              ) : (
-                                 <div className="h-10 w-16 shrink-0 rounded bg-muted" />
-                               )}
+                              {(() => {
+                                const thumbnailUrl = getYouTubeThumbnailUrl(video.thumbnail_url, video.youtube_video_id);
+                                return thumbnailUrl ? (
+                                  <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded bg-muted">
+                                    <Image 
+                                      src={thumbnailUrl} 
+                                      alt={video.title} 
+                                      fill 
+                                      sizes="64px" 
+                                      className="object-cover" 
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="h-10 w-16 shrink-0 rounded bg-muted" />
+                                );
+                              })()}
                                <TooltipProvider>
                                  <Tooltip>
                                    <TooltipTrigger asChild>
@@ -515,25 +524,28 @@ export default async function PlaylistPage({ params }: PageProps) {
                               
                               {/* Thumbnail container */}
                               <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-muted transition-all duration-200 group-hover:scale-[1.03] group-hover:shadow-lg shadow-sm">
-                                {otherPlaylist.thumbnail_url ? (
-                                  <Image
-                                    src={otherPlaylist.thumbnail_url}
-                                    alt={otherPlaylist.title}
-                                    fill
-                                    sizes="256px"
-                                    className="object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center bg-muted">
-                                    <Image 
-                                      src="/youtube.png" 
-                                      alt="YouTube" 
-                                      width={28}
-                                      height={28}
-                                      className="opacity-30"
+                                {(() => {
+                                  const thumbnailUrl = getYouTubeThumbnailUrl(otherPlaylist.thumbnail_url);
+                                  return thumbnailUrl ? (
+                                    <Image
+                                      src={thumbnailUrl}
+                                      alt={otherPlaylist.title}
+                                      fill
+                                      sizes="256px"
+                                      className="object-cover"
                                     />
-                                  </div>
-                                )}
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center bg-muted">
+                                      <Image 
+                                        src="/youtube.png" 
+                                        alt="YouTube" 
+                                        width={28}
+                                        height={28}
+                                        className="opacity-30"
+                                      />
+                                    </div>
+                                  );
+                                })()}
                                 
                                 {/* Video count badge - top right with icon */}
                                 {otherPlaylist.video_count && (

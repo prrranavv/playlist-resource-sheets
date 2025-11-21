@@ -198,25 +198,28 @@ export default async function ChannelPage({ params }: PageProps) {
                     
                     {/* Thumbnail container */}
                     <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted transition-all duration-200 group-hover:scale-[1.03] group-hover:shadow-lg shadow-sm">
-                      {playlist.thumbnail_url ? (
-                        <Image
-                          src={playlist.thumbnail_url}
-                          alt={playlist.title}
-                          fill
-                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-muted">
-                          <Image 
-                            src="/youtube.png" 
-                            alt="YouTube" 
-                            width={48}
-                            height={48}
-                            className="opacity-30"
+                      {(() => {
+                        const thumbnailUrl = getYouTubeThumbnailUrl(playlist.thumbnail_url);
+                        return thumbnailUrl ? (
+                          <Image
+                            src={thumbnailUrl}
+                            alt={playlist.title}
+                            fill
+                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
+                            className="object-cover"
                           />
-                        </div>
-                      )}
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-muted">
+                            <Image 
+                              src="/youtube.png" 
+                              alt="YouTube" 
+                              width={48}
+                              height={48}
+                              className="opacity-30"
+                            />
+                          </div>
+                        );
+                      })()}
                       
                       {/* Video count badge - top right with icon */}
                       {playlist.video_count && (

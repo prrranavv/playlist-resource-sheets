@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSubjectIcon } from "@/lib/icons";
+import { getYouTubeThumbnailUrl } from "@/lib/utils";
 
 type PlaylistItem = {
   id: string;
@@ -1782,22 +1783,25 @@ export default function Home() {
             <CardContent className="py-0">
               <div className="flex gap-4">
                 {/* Playlist Thumbnail */}
-                {items[0]?.thumbnailUrl && (
-                  <a 
-                    href={playlistId ? `https://www.youtube.com/playlist?list=${playlistId}` : '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted hover:opacity-80 transition-opacity"
-                  >
-                    <Image 
-                      src={items[0].thumbnailUrl} 
-                      alt={playlistTitle || 'Playlist'} 
-                      fill 
-                      sizes="192px"
-                      className="object-cover" 
-                    />
-                  </a>
-                )}
+                {items[0]?.thumbnailUrl && (() => {
+                  const thumbnailUrl = getYouTubeThumbnailUrl(items[0].thumbnailUrl, items[0]?.id);
+                  return thumbnailUrl ? (
+                    <a 
+                      href={playlistId ? `https://www.youtube.com/playlist?list=${playlistId}` : '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative h-32 w-48 shrink-0 overflow-hidden rounded-lg bg-muted hover:opacity-80 transition-opacity"
+                    >
+                      <Image 
+                        src={thumbnailUrl} 
+                        alt={playlistTitle || 'Playlist'} 
+                        fill 
+                        sizes="192px"
+                        className="object-cover" 
+                      />
+                    </a>
+                  ) : null;
+                })()}
                 
                 {/* Playlist Info */}
                 <div className="flex-1 min-w-0 space-y-3 relative">
@@ -1925,13 +1929,16 @@ export default function Home() {
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span className="text-xs text-muted-foreground w-6 shrink-0">{item.position + 1}.</span>
                         <a href={item.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 min-w-0 flex-1">
-                          {item.thumbnailUrl ? (
-                            <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded bg-muted">
-                              <Image src={item.thumbnailUrl} alt={item.title} fill sizes="64px" className="object-cover" />
-                            </div>
-                          ) : (
-                            <div className="h-10 w-16 shrink-0 rounded bg-muted" />
-                          )}
+                          {(() => {
+                            const thumbnailUrl = getYouTubeThumbnailUrl(item.thumbnailUrl, item.id);
+                            return thumbnailUrl ? (
+                              <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded bg-muted">
+                                <Image src={thumbnailUrl} alt={item.title} fill sizes="64px" className="object-cover" />
+                              </div>
+                            ) : (
+                              <div className="h-10 w-16 shrink-0 rounded bg-muted" />
+                            );
+                          })()}
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium truncate">{item.title}</p>
                             {!showOutput && interactiveCreatedById[item.id] && (
@@ -2084,25 +2091,28 @@ export default function Home() {
                                   
                                   {/* Thumbnail container */}
                                   <div className="relative aspect-video w-full overflow-hidden rounded-md bg-muted transition-all duration-200 group-hover:scale-[1.03] group-hover:shadow-lg shadow-sm">
-                                    {playlist.thumbnail_url ? (
-                                      <Image
-                                        src={playlist.thumbnail_url}
-                                        alt={playlist.title}
-                                        fill
-                                        sizes="192px"
-                                        className="object-cover"
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center bg-muted">
-                                        <Image 
-                                          src="/youtube.png" 
-                                          alt="YouTube" 
-                                          width={32}
-                                          height={32}
-                                          className="opacity-30"
+                                    {(() => {
+                                      const thumbnailUrl = getYouTubeThumbnailUrl(playlist.thumbnail_url);
+                                      return thumbnailUrl ? (
+                                        <Image
+                                          src={thumbnailUrl}
+                                          alt={playlist.title}
+                                          fill
+                                          sizes="192px"
+                                          className="object-cover"
                                         />
-                                      </div>
-                                    )}
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-muted">
+                                          <Image 
+                                            src="/youtube.png" 
+                                            alt="YouTube" 
+                                            width={32}
+                                            height={32}
+                                            className="opacity-30"
+                                          />
+                                        </div>
+                                      );
+                                    })()}
                                     
                                     {/* Video count badge */}
                                     {playlist.video_count && (
