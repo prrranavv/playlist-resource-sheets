@@ -74,6 +74,7 @@ export default function Home() {
     | "waitingIV"
     | "fetchingIV"
     | "doneIV"
+    | "fetchingKeys"
   >("idle");
   const [, setAssessmentMatchedCount] = useState<number>(0);
   const [, setIvMatchedCount] = useState<number>(0);
@@ -1660,7 +1661,7 @@ export default function Home() {
                    publishing || publishingIVs ? `Publishing… (${publishProgress.done + publishIVProgress.done}/${publishProgress.total + publishIVProgress.total})` :
                    createFlowStatus === "creatingA" || createFlowStatus === "creatingIV" ? "Creating resources…" :
                    createFlowStatus === "waitingA" || createFlowStatus === "waitingIV" ? `Waiting ${Math.max(waitRemaining, interactiveWaitRemaining)}s` :
-                   createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" ? "Fetching resources…" :
+                   createFlowStatus === "fetchingA" || createFlowStatus === "fetchingIV" || createFlowStatus === "fetchingKeys" ? "Fetching resources…" :
                    (resourcesPublished && supabaseSaved && wasLoadedFromDatabase) ? "Already generated" :
                    "Create resources"}
                 </Button>
