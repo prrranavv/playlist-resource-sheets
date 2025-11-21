@@ -10,6 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { getYouTubeThumbnailUrl } from '@/lib/utils';
 
 interface PageProps {
   params: Promise<{
