@@ -106,6 +106,29 @@ export type Database = {
           created_at?: string;
         };
       };
+      video_quiz_keys: {
+        Row: {
+          id: string;
+          youtube_video_id: string;
+          quiz_gen_key: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          youtube_video_id: string;
+          quiz_gen_key: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          youtube_video_id?: string;
+          quiz_gen_key?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
   };
 };

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 const AUTH_ENDPOINT = "https://wayground.com/_authserver/public/public/v1/auth/login/local";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function POST(request: Request) {
   console.log('[api:wayground:auto-login] Auto-login request received');
   

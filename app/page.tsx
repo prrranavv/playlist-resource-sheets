@@ -272,144 +272,36 @@ export default function Home() {
     return matched;
   }
 
-  async function fetchInteractivesAndUpdate(): Promise<{ ivPairs: Array<{ quizId: string; draftVersion: string; videoId: string; title: string }> }> {
-    console.log('[ui:fetchInteractives] Starting interactive video fetch');
+  async function fetchInteractivesAndUpdate(numVideosInPlaylist: number): Promise<{ filteredIVs: Array<{ quizId: string; draftVersion: string | null; title: string }> }> {
+    console.log(`[ui:fetchInteractives] Starting interactive video fetch for playlist with ${numVideosInPlaylist} videos`);
     const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST", headers: cookieHeader() });
     const data = await res.json();
     if (res.ok && Array.isArray(data?.interactive)) {
       const allIVs = data.interactive as Array<{ quizId: string; draftVersion?: string | null; createdAt?: string; title?: string }>;
-      
-      // Filter for IVs created in the last 2.5 minutes
-      const twoAndHalfMinutesAgo = Date.now() - (2.5 * 60 * 1000);
+
+      // Filter for IVs created in the last 150s + N*2s (where N = number of videos in playlist)
+      const filterWindowMs = (150 + numVideosInPlaylist * 2) * 1000;
+      const cutoffTime = Date.now() - filterWindowMs;
       const recentIVs = allIVs.filter(iv => {
         if (!iv.createdAt) return false;
         const createdTime = new Date(iv.createdAt).getTime();
-        return createdTime >= twoAndHalfMinutesAgo;
+        return createdTime >= cutoffTime;
       });
-      
-      console.log(`[ui:fetchInteractives] Found ${allIVs.length} total IVs, ${recentIVs.length} created in last 2.5 minutes`);
-      
-      if (recentIVs.length > 0) {
-        // Fetch video IDs and titles for recent IVs with exponential backoff
-        const videoIdMap: Record<string, string> = {}; // quizId -> videoId
-        const titleMap: Record<string, string> = {}; // quizId -> title (from fetch-interactive-map or fetch-iv-video-ids)
-        let consecutiveRateLimits = 0;
-        const baseDelay = 8000;
-        
-        for (let i = 0; i < recentIVs.length; i++) {
-          const iv = recentIVs[i];
-          // Use title from fetch-interactive-map as initial value
-          if (iv.title) {
-            titleMap[iv.quizId] = iv.title;
-          }
-          
-          let retryCount = 0;
-          let success = false;
-          
-          while (!success && retryCount < 3) {
-            try {
-              const res2 = await fetch("/api/wayground/fetch-iv-video-ids", {
-                method: "POST",
-                headers: { "content-type": "application/json", ...cookieHeader() },
-                body: JSON.stringify({ quizIds: [iv.quizId] }),
-              });
-              const data2 = await res2.json();
-              
-              // Check if rate limited
-              if (data2?.error?.includes?.("TOO_MANY_REQUESTS") || data2?.error?.includes?.("rateLimiter")) {
-                consecutiveRateLimits++;
-                const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount));
-                console.log(`[ui:fetchInteractives] Rate limited on IV ${iv.quizId}, waiting ${retryDelay}ms before retry ${retryCount + 1}/3`);
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                retryCount++;
-                continue;
-              }
-              
-              if (res2.ok && data2?.videoIdsById) {
-                const videoId = data2.videoIdsById[iv.quizId];
-                const title = data2.titlesById?.[iv.quizId];
-                if (videoId) {
-                  videoIdMap[iv.quizId] = videoId;
-                  console.log(`[ui:fetchInteractives] Mapped IV ${iv.quizId} to video ${videoId}`);
-                }
-                // Prefer title from fetch-iv-video-ids if available, otherwise keep the one from fetch-interactive-map
-                if (title) {
-                  titleMap[iv.quizId] = title;
-                }
-                consecutiveRateLimits = 0;
-              }
-              success = true;
-            } catch (err) {
-              console.error(`[ui:fetchInteractives] Failed to fetch video ID for IV ${iv.quizId}:`, err);
-              retryCount++;
-              if (retryCount < 3) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-              }
-            }
-          }
-          
-          // Adaptive delay
-          let delay = baseDelay + (consecutiveRateLimits * 2000);
-          delay = Math.min(delay, 30000);
-          
-          if (i < recentIVs.length - 1) {
-            console.log(`[ui:fetchInteractives] Waiting ${delay}ms before next IV request (consecutive rate limits: ${consecutiveRateLimits})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        }
-        
-        console.log(`[ui:fetchInteractives] Mapped ${Object.keys(videoIdMap).length} IVs to videos`);
-        
-        // Update state with fetched video IDs and titles
-        const setMap: Record<string, boolean> = {};
-        const infoMap: Record<string, { quizId: string; draftVersion: string }> = {};
-        const metaMap: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
-        
-        for (const [quizId, videoId] of Object.entries(videoIdMap)) {
-          setMap[videoId] = true;
-          const iv = recentIVs.find(i => i.quizId === quizId);
-          const title = titleMap[quizId] || "";
-          if (iv?.draftVersion) {
-            infoMap[videoId] = { quizId, draftVersion: iv.draftVersion };
-            metaMap[videoId] = { quizId, draftVersion: iv.draftVersion, title };
-          }
-        }
-        
-        setInteractiveCreatedById((prev) => ({ ...prev, ...setMap }));
-        setInteractiveInfoByVideoId((prev) => ({ ...prev, ...infoMap }));
-        setInteractiveMetaByVideoId((prev) => ({ ...prev, ...metaMap }));
-        
-        // Build IV pairs for publishing from the fetched data
-        const ivPairs: Array<{ quizId: string; draftVersion: string; videoId: string; title: string }> = [];
-        for (const [videoId, info] of Object.entries(infoMap)) {
-          const metaInfo = metaMap[videoId];
-          if (info.quizId && info.draftVersion && metaInfo?.title) {
-            ivPairs.push({
-              quizId: info.quizId,
-              draftVersion: info.draftVersion,
-              videoId: videoId,
-              title: metaInfo.title
-            });
-          }
-        }
-        
-        console.log(`[ui:fetchInteractives] Built ${ivPairs.length} IV pairs for publishing`);
-        
-        // Compute IV match count
-        let matched = 0;
-        for (const it of items) if (setMap[it.id]) matched += 1;
-        console.log(`[ui:fetchInteractives] Matched ${matched}/${items.length} IVs to playlist videos`);
-        setIvMatchedCount(matched);
-        
-        console.log('[ui:fetchInteractives] Complete');
-        return { ivPairs };
-      }
-      
-      console.log('[ui:fetchInteractives] No recent IVs found');
-      return { ivPairs: [] };
+
+      console.log(`[ui:fetchInteractives] Found ${allIVs.length} total IVs, ${recentIVs.length} created in last ${filterWindowMs/1000}s (150s + ${numVideosInPlaylist}*2s)`);
+
+      // Return filtered IVs with basic info (without fetching video IDs yet)
+      const filteredIVs = recentIVs.map(iv => ({
+        quizId: iv.quizId,
+        draftVersion: iv.draftVersion || null,
+        title: iv.title || ""
+      }));
+
+      console.log('[ui:fetchInteractives] Complete - returning filtered IVs');
+      return { filteredIVs };
     }
     console.log('[ui:fetchInteractives] API call failed');
-    return { ivPairs: [] };
+    return { filteredIVs: [] };
   }
   function cookieHeader(): Record<string, string> {
     const cookie = (typeof window !== "undefined") ? (localStorage.getItem("waygroundCookie") || "") : "";
@@ -489,19 +381,8 @@ export default function Home() {
     setCreateFlowStatus("creatingA");
     setBulkCreating(true);
 
-    // Build a local map of videoId -> quizGenKey during creation
-    const localQuizKeyById: Record<string, string> = { ...quizKeyById };
-
     const assessmentWorker = async (it: PlaylistItem) => {
-      if (localQuizKeyById[it.id]) {
-        console.log(`[ui:createResources] Skipping assessment for ${it.id} - already created`);
-        return; // skip if already created
-      }
-      const key = await createAssessmentAndGetKey(it);
-      if (key) {
-        localQuizKeyById[it.id] = key;
-        console.log(`[ui:createResources] Created assessment for ${it.id}, key: ${key}`);
-      }
+      await createAssessmentAndGetKey(it);
     };
     const assessmentInc = () => setBulkProgress((p) => ({ ...p, done: Math.min(p.done + 1, p.total) }));
 
@@ -510,26 +391,11 @@ export default function Home() {
       await assessmentWorker(it);
       assessmentInc();
     }
-    console.log(`[ui:createResources] All assessments created, ${Object.keys(localQuizKeyById).length} keys collected`);
+    console.log(`[ui:createResources] All assessments created`);
     setBulkCreating(false);
 
-    // Wait 100s after assessments
-    console.log('[ui:createResources] Phase 2: Waiting 100s for assessment processing');
-    setCreateFlowStatus("waitingA");
-    startWaitCountdown(100);
-    await pause(100_000);
-
-    // Fetch assessments
-    console.log('[ui:createResources] Phase 3: Fetching assessment metadata');
-    setCreateFlowStatus("fetchingA");
-    const assessmentData = await fetchAssessments();
-    console.log(`[ui:createResources] Fetched ${Object.keys(assessmentData.quizMetaById).length} assessment metadata`);
-    const aCount = computeAssessmentMatchCount();
-    console.log(`[ui:createResources] Matched ${aCount}/${items.length} assessments`);
-    setAssessmentMatchedCount(aCount);
-
-    // Create IVs sequentially
-    console.log('[ui:createResources] Phase 4: Creating interactive videos');
+    // Create IVs sequentially (no wait between assessments and IVs)
+    console.log('[ui:createResources] Phase 2: Creating interactive videos');
     setCreateFlowStatus("creatingIV");
     setBulkCreatingInteractive(true);
     for (const it of items) {
@@ -543,16 +409,188 @@ export default function Home() {
     console.log('[ui:createResources] All interactive videos created');
     setBulkCreatingInteractive(false);
 
-    // Wait 100s after IVs
-    console.log('[ui:createResources] Phase 5: Waiting 100s for IV processing');
-    setCreateFlowStatus("waitingIV");
-    startInteractiveWaitCountdown(100);
-    await pause(100_000);
+    // Wait 150s for processing
+    const waitTime = 150;
+    console.log(`[ui:createResources] Phase 3: Waiting ${waitTime}s for resource processing`);
+    setCreateFlowStatus("waitingA");
+    startWaitCountdown(waitTime);
+    await pause(waitTime * 1000);
 
-    // Fetch IVs
-    console.log('[ui:createResources] Phase 6: Fetching interactive video metadata');
+    // Fetch quiz keys from database
+    console.log('[ui:createResources] Phase 4: Fetching quiz keys from database...');
+    setCreateFlowStatus("fetchingA");
+    const localQuizKeyById: Record<string, string> = {};
+    try {
+      const videoIds = items.map(it => it.id).join(',');
+      const res = await fetch(`/api/video-quiz-keys?videoIds=${encodeURIComponent(videoIds)}`);
+      const data = await res.json();
+      if (res.ok && data.quizKeyMap) {
+        Object.assign(localQuizKeyById, data.quizKeyMap);
+        console.log(`[ui:createResources] Fetched ${Object.keys(localQuizKeyById).length} quiz keys from database`);
+        setAssessmentMatchedCount(Object.keys(localQuizKeyById).length);
+      } else {
+        console.error('[ui:createResources] Failed to fetch quiz keys from database:', data.error);
+      }
+    } catch (err) {
+      console.error('[ui:createResources] Error fetching quiz keys from database:', err);
+    }
+
+    // Fetch last 2000 draft assessments and filter for ones created in last 150s + N*2s
+    console.log('[ui:createResources] Phase 5: Fetching filtered assessments');
+    const { filteredQuizIds, quizTitleMap } = await fetchAssessments(items.length);
+    console.log(`[ui:createResources] Filtered ${filteredQuizIds.length} assessments`);
+
+    // Fetch all IVs and filter for ones created in last 150s + N*2s
+    console.log('[ui:createResources] Phase 6: Fetching filtered interactive videos');
     setCreateFlowStatus("fetchingIV");
-    const ivData = await fetchInteractivesAndUpdate();
+    const { filteredIVs } = await fetchInteractivesAndUpdate(items.length);
+    console.log(`[ui:createResources] Filtered ${filteredIVs.length} IVs`);
+
+    // Phase 7: Unified fetching - fetch keys for ALL assessments and video IDs for ALL IVs with 2s gaps
+    console.log('[ui:createResources] Phase 7: Fetching quiz keys and video IDs for all filtered resources');
+    setCreateFlowStatus("fetchingKeys");
+
+    const allKeys: Record<string, string | null> = {};
+    const allVersions: Record<string, string | null> = {};
+    const ivVideoIdMap: Record<string, string> = {}; // quizId -> videoId
+    const ivTitleMap: Record<string, string> = {}; // quizId -> title
+
+    const totalResources = filteredQuizIds.length + filteredIVs.length;
+    let processed = 0;
+    let consecutiveRateLimits = 0;
+    const baseDelay = 2000; // 2 seconds gap
+
+    // Fetch assessment keys
+    for (const quizId of filteredQuizIds) {
+      let retryCount = 0;
+      let success = false;
+
+      while (!success && retryCount < 3) {
+        try {
+          const res = await fetch("/api/wayground/fetch-quiz-keys", {
+            method: "POST",
+            headers: { "content-type": "application/json", ...cookieHeader() },
+            body: JSON.stringify({ quizIds: [quizId] }),
+          });
+          const data = await res.json();
+
+          if (data?.error?.includes?.("TOO_MANY_REQUESTS") || data?.error?.includes?.("rateLimiter")) {
+            consecutiveRateLimits++;
+            const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount));
+            console.log(`[ui:createResources] Rate limited on assessment ${quizId}, waiting ${retryDelay}ms (retry ${retryCount + 1}/3)`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            retryCount++;
+            continue;
+          }
+
+          if (res.ok && data?.quizGenKeysById) {
+            Object.assign(allKeys, data.quizGenKeysById);
+            if (data?.draftVersionById) Object.assign(allVersions, data.draftVersionById);
+            consecutiveRateLimits = 0;
+            console.log(`[ui:createResources] Fetched keys for assessment ${quizId} (${processed + 1}/${totalResources})`);
+          }
+          success = true;
+        } catch (err) {
+          console.error(`[ui:createResources] Failed to fetch quiz key for ${quizId}:`, err);
+          retryCount++;
+          if (retryCount < 3) await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+
+      processed++;
+      if (processed < totalResources) {
+        const delay = Math.min(baseDelay + (consecutiveRateLimits * 2000), 30000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    // Fetch IV video IDs
+    for (const iv of filteredIVs) {
+      // Preserve title from fetch-interactive-map
+      if (iv.title) ivTitleMap[iv.quizId] = iv.title;
+
+      let retryCount = 0;
+      let success = false;
+
+      while (!success && retryCount < 3) {
+        try {
+          const res = await fetch("/api/wayground/fetch-iv-video-ids", {
+            method: "POST",
+            headers: { "content-type": "application/json", ...cookieHeader() },
+            body: JSON.stringify({ quizIds: [iv.quizId] }),
+          });
+          const data = await res.json();
+
+          if (data?.error?.includes?.("TOO_MANY_REQUESTS") || data?.error?.includes?.("rateLimiter")) {
+            consecutiveRateLimits++;
+            const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount));
+            console.log(`[ui:createResources] Rate limited on IV ${iv.quizId}, waiting ${retryDelay}ms (retry ${retryCount + 1}/3)`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            retryCount++;
+            continue;
+          }
+
+          if (res.ok && data?.videoIdsById) {
+            const videoId = data.videoIdsById[iv.quizId];
+            const title = data.titlesById?.[iv.quizId];
+            if (videoId) {
+              ivVideoIdMap[iv.quizId] = videoId;
+              console.log(`[ui:createResources] Fetched video ID for IV ${iv.quizId} (${processed + 1}/${totalResources})`);
+            }
+            if (title) ivTitleMap[iv.quizId] = title;
+            consecutiveRateLimits = 0;
+          }
+          success = true;
+        } catch (err) {
+          console.error(`[ui:createResources] Failed to fetch video ID for IV ${iv.quizId}:`, err);
+          retryCount++;
+          if (retryCount < 3) await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+
+      processed++;
+      if (processed < totalResources) {
+        const delay = Math.min(baseDelay + (consecutiveRateLimits * 2000), 30000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    console.log(`[ui:createResources] Fetched ${Object.keys(allKeys).length} assessment keys and ${Object.keys(ivVideoIdMap).length} IV video IDs`);
+
+    // Update state with fetched data
+    const assessmentMetaById: Record<string, { title: string; quizGenKey?: string | null }> = {};
+    for (const [id, key] of Object.entries<string | null>(allKeys)) {
+      const existing = quizTitleMap[id] || {};
+      assessmentMetaById[id] = { title: existing.title || "", quizGenKey: key };
+    }
+    setQuizMetaById((prev) => ({ ...prev, ...assessmentMetaById }));
+    if (Object.keys(allVersions).length > 0) setDraftVersionById(allVersions);
+
+    // Update IV state
+    const setMap: Record<string, boolean> = {};
+    const infoMap: Record<string, { quizId: string; draftVersion: string }> = {};
+    const metaMap: Record<string, { quizId: string; draftVersion: string; title: string }> = {};
+
+    for (const [quizId, videoId] of Object.entries(ivVideoIdMap)) {
+      setMap[videoId] = true;
+      const iv = filteredIVs.find(i => i.quizId === quizId);
+      const title = ivTitleMap[quizId] || "";
+      if (iv?.draftVersion) {
+        infoMap[videoId] = { quizId, draftVersion: iv.draftVersion };
+        metaMap[videoId] = { quizId, draftVersion: iv.draftVersion, title };
+      }
+    }
+
+    setInteractiveCreatedById((prev) => ({ ...prev, ...setMap }));
+    setInteractiveInfoByVideoId((prev) => ({ ...prev, ...infoMap }));
+    setInteractiveMetaByVideoId((prev) => ({ ...prev, ...metaMap }));
+
+    // Update match counts
+    setAssessmentMatchedCount(Object.keys(allKeys).length);
+    let ivMatched = 0;
+    for (const it of items) if (setMap[it.id]) ivMatched += 1;
+    setIvMatchedCount(ivMatched);
+
     setCreateFlowStatus("doneIV");
     setReadyToPublish(true);
     console.log('[ui:createResources] All resources created and fetched');
@@ -560,53 +598,46 @@ export default function Home() {
     // Wait for state updates to propagate
     await pause(3000);
 
-    // Automatically publish resources using the exact original working flow
-    console.log("[ui:createResources] Phase 7: Auto-publishing all resources");
-    const assessmentPairs = buildAssessmentPublishPairsWithData(assessmentData.quizMetaById, assessmentData.draftVersionById);
-    const ivPairs = ivData.ivPairs.map(iv => ({ quizId: iv.quizId, draftVersion: iv.draftVersion }));
-    console.log(`[ui:createResources] Assessment pairs to publish: ${assessmentPairs.length}`);
-    console.log(`[ui:createResources] IV pairs to publish: ${ivPairs.length}`);
-    
-    // Create a map from quizId to YouTube video title for both assessments and IVs
-    const quizIdToYouTubeTitle: Record<string, string> = {};
-    
-    // Build a videoId -> YouTubeTitle map from the original playlist items
-    const videoIdToTitle: Record<string, string> = {};
-    for (const video of items) {
-      videoIdToTitle[video.id] = video.title;
+    // Automatically publish resources
+    console.log("[ui:createResources] Phase 8: Auto-publishing all resources");
+    const assessmentPairs = buildAssessmentPublishPairsWithData(assessmentMetaById, allVersions);
+
+    // Build IV pairs from fetched data
+    const ivPairsForPublish: Array<{ quizId: string; draftVersion: string }> = [];
+    for (const [videoId, info] of Object.entries(infoMap)) {
+      if (info.quizId && info.draftVersion) {
+        ivPairsForPublish.push({ quizId: info.quizId, draftVersion: info.draftVersion });
+      }
     }
-    console.log(`[ui:createResources] Have ${Object.keys(videoIdToTitle).length} YouTube video titles`);
-    
-    // Map assessments: Match each assessment to its YouTube video
-    // During creation, each assessment was associated with a video and got a unique quizGenKey
-    // We need to match: quizId -> quizGenKey -> videoId -> YouTube title
+
+    console.log(`[ui:createResources] Assessment pairs to publish: ${assessmentPairs.length}`);
+    console.log(`[ui:createResources] IV pairs to publish: ${ivPairsForPublish.length}`);
+
+    // Create a map from quizId to YouTube video title
+    const quizIdToYouTubeTitle: Record<string, string> = {};
+
+    // Map assessments: Use quiz keys from database to match
     for (const video of items) {
       const videoId = video.id;
       const quizGenKey = localQuizKeyById[videoId];
-      
+
       if (quizGenKey) {
         // Find the quizId that has this quizGenKey
-        const quizEntry = Object.entries(assessmentData.quizMetaById).find(([, meta]) => meta.quizGenKey === quizGenKey);
+        const quizEntry = Object.entries(assessmentMetaById).find(([, meta]) => meta.quizGenKey === quizGenKey);
         if (quizEntry) {
           const [quizId] = quizEntry;
           quizIdToYouTubeTitle[quizId] = video.title;
           console.log(`[ui:createResources] Mapped assessment ${quizId} (key: ${quizGenKey}) to YouTube: "${video.title.substring(0, 50)}..."`);
-        } else {
-          console.log(`[ui:createResources] No assessment found for video ${videoId} with key ${quizGenKey}`);
         }
-      } else {
-        console.log(`[ui:createResources] No quizGenKey found for video ${videoId} in localQuizKeyById`);
       }
     }
-    
+
     // Map IVs: Find YouTube video title by matching videoId
-    for (const iv of ivData.ivPairs) {
-      const video = items.find(it => it.id === iv.videoId);
+    for (const [videoId, info] of Object.entries(infoMap)) {
+      const video = items.find(it => it.id === videoId);
       if (video) {
-        quizIdToYouTubeTitle[iv.quizId] = video.title;
-        console.log(`[ui:createResources] Mapped IV ${iv.quizId} to YouTube title: "${video.title.substring(0, 50)}..."`);
-      } else {
-        console.log(`[ui:createResources] No video found for IV ${iv.quizId} (videoId: ${iv.videoId})`);
+        quizIdToYouTubeTitle[info.quizId] = video.title;
+        console.log(`[ui:createResources] Mapped IV ${info.quizId} to YouTube title: "${video.title.substring(0, 50)}..."`);
       }
     }
     
@@ -637,13 +668,13 @@ export default function Home() {
     console.log(`[ui:publish] All ${assessmentPairs.length} assessments published`);
     setPublishing(false);
     setPublishingIVs(true);
-    setPublishIVProgress({ done: 0, total: ivPairs.length });
-    for (const p of ivPairs) {
+    setPublishIVProgress({ done: 0, total: ivPairsForPublish.length });
+    for (const p of ivPairsForPublish) {
       try {
         console.log(`[ui:publish] Publishing IV ${p.quizId} v${p.draftVersion}`);
         await fetch("/api/wayground/publish-interactive", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify(p) });
         await fetch("/api/wayground/make-public", { method: "POST", headers: { "content-type": "application/json", ...cookieHeader() }, body: JSON.stringify({ quizId: p.quizId }) });
-        
+
         // Update name to match YouTube video title
         const videoTitle = quizIdToYouTubeTitle[p.quizId];
         if (videoTitle) {
@@ -658,11 +689,25 @@ export default function Home() {
       }
       setPublishIVProgress((s) => ({ ...s, done: s.done + 1 }));
     }
-    console.log(`[ui:publish] All ${ivPairs.length} IVs published`);
+    console.log(`[ui:publish] All ${ivPairsForPublish.length} IVs published`);
     setPublishingIVs(false);
-    
+
+    // Build IV pairs with video IDs for saveToSupabase
+    const ivPairsForSave: Array<{ quizId: string; draftVersion: string; videoId: string; title: string }> = [];
+    for (const [videoId, info] of Object.entries(infoMap)) {
+      const metaInfo = metaMap[videoId];
+      if (info.quizId && info.draftVersion && metaInfo?.title) {
+        ivPairsForSave.push({
+          quizId: info.quizId,
+          draftVersion: info.draftVersion,
+          videoId: videoId,
+          title: metaInfo.title
+        });
+      }
+    }
+
     // Save to Supabase with the actual data FIRST
-    await saveToSupabase(assessmentData.quizMetaById, ivData.ivPairs, localQuizKeyById);
+    await saveToSupabase(assessmentMetaById, ivPairsForSave, localQuizKeyById);
     
     // THEN mark as complete and show output (sheet will already be created by saveToSupabase)
     setResourcesPublished(true);
@@ -1478,8 +1523,8 @@ export default function Home() {
   //   startInteractiveWaitCountdown(90);
   // }
 
-  async function fetchAssessments(): Promise<{ quizMetaById: Record<string, { title: string; quizGenKey?: string | null }>, draftVersionById: Record<string, string | null> }> {
-    console.log('[ui:fetchAssessments] Starting assessment fetch');
+  async function fetchAssessments(numVideosInPlaylist: number): Promise<{ filteredQuizIds: string[]; quizTitleMap: Record<string, { title: string }> }> {
+    console.log(`[ui:fetchAssessments] Starting assessment fetch for playlist with ${numVideosInPlaylist} videos`);
     setFetchingAssessments(true);
     setError(null);
     try {
@@ -1496,121 +1541,30 @@ export default function Home() {
       }
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
-      // Filter for quizzes created in the last 2.5 minutes
-      const twoAndHalfMinutesAgo = Date.now() - (2.5 * 60 * 1000);
-      const recentQuizzes = Array.isArray(data?.quizzes) 
+      // Filter for quizzes created in the last 150s + N*2s (where N = number of videos in playlist)
+      // N*2s accounts for the 2s gap between each video creation call
+      const filterWindowMs = (150 + numVideosInPlaylist * 2) * 1000;
+      const cutoffTime = Date.now() - filterWindowMs;
+      const recentQuizzes = Array.isArray(data?.quizzes)
         ? (data.quizzes as Array<{ id: string; title: string; createdAt?: string }>)
             .filter(q => {
               if (!q.createdAt) return false;
               const createdTime = new Date(q.createdAt).getTime();
-              return createdTime >= twoAndHalfMinutesAgo;
+              return createdTime >= cutoffTime;
             })
         : [];
-      
-      const recentIds = recentQuizzes.map(q => q.id);
-      console.log(`[ui:fetchAssessments] Found ${ids.length} total assessments, ${recentIds.length} created in last 2.5 minutes`);
 
-      if (recentIds.length > 0) {
-        // Process one ID at a time with exponential backoff to avoid rate limiting
-        const allKeys: Record<string, string | null> = {};
-        const allVersions: Record<string, string | null> = {};
-        let consecutiveRateLimits = 0;
-        const baseDelay = 8000; // Start with 8 seconds
-        
-        for (let i = 0; i < recentIds.length; i++) {
-          const quizId = recentIds[i];
-          let retryCount = 0;
-          let success = false;
-          
-          while (!success && retryCount < 3) {
-            try {
-              const res2 = await fetch("/api/wayground/fetch-quiz-keys", {
-                method: "POST",
-                headers: { "content-type": "application/json", ...cookieHeader() },
-                body: JSON.stringify({ quizIds: [quizId] }),
-              });
-              const data2 = await res2.json();
-              
-              // Check if rate limited
-              if (data2?.error?.includes?.("TOO_MANY_REQUESTS") || data2?.error?.includes?.("rateLimiter")) {
-                consecutiveRateLimits++;
-                const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount)); // Max 30s
-                console.log(`[ui:fetchAssessments] Rate limited on ${quizId}, waiting ${retryDelay}ms before retry ${retryCount + 1}/3`);
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                retryCount++;
-                continue;
-              }
-              
-              if (res2.ok && data2?.quizGenKeysById) {
-                Object.assign(allKeys, data2.quizGenKeysById);
-                if (data2?.draftVersionById) Object.assign(allVersions, data2.draftVersionById);
-                consecutiveRateLimits = 0; // Reset on success
-                console.log(`[ui:fetchAssessments] Fetched keys for ${quizId}`);
-              }
-              success = true;
-            } catch (err) {
-              console.error(`[ui:fetchAssessments] Failed to fetch quiz key for ${quizId}:`, err);
-              retryCount++;
-              if (retryCount < 3) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-              }
-            }
-          }
-          
-          // Adaptive delay: increase if we're getting rate limited
-          let delay = baseDelay + (consecutiveRateLimits * 2000); // Add 2s per rate limit
-          delay = Math.min(delay, 30000); // Cap at 30 seconds
-          
-          // Wait before next request (except for last one)
-          if (i < recentIds.length - 1) {
-            console.log(`[ui:fetchAssessments] Waiting ${delay}ms before next request (consecutive rate limits: ${consecutiveRateLimits})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        }
-        
-        console.log(`[ui:fetchAssessments] Fetched ${Object.keys(allKeys).length} quiz keys and ${Object.keys(allVersions).length} draft versions`);
-        
-        // Update state with all collected keys
-        const keyed: Record<string, { title: string; quizGenKey?: string | null }> = {};
-        for (const [id, key] of Object.entries<string | null>(allKeys)) {
-          const existing = quizTitleMap[id] || {};
-          keyed[id] = { title: existing.title || "", quizGenKey: key };
-        }
-        setQuizMetaById((prev) => {
-          const updated = { ...prev, ...keyed };
-          // Update assessment match count after state is set
-          setTimeout(() => {
-            const count = computeAssessmentMatchCount();
-            setAssessmentMatchedCount(count);
-          }, 0);
-          return updated;
-        });
-        if (Object.keys(allVersions).length > 0) setDraftVersionById(allVersions);
-        
-        setPhase("fetched");
-        setFetchingAssessments(false);
-        console.log(`[ui:fetchAssessments] Complete - returning ${Object.keys(keyed).length} metadata records`);
-        
-        // Return the fetched data directly
-        return { quizMetaById: keyed, draftVersionById: allVersions };
-      } else {
-        console.log('[ui:fetchAssessments] No recent quizzes found');
-        // Even if no recent quizzes, update the count
-        setTimeout(() => {
-          const count = computeAssessmentMatchCount();
-          setAssessmentMatchedCount(count);
-        }, 0);
-        
-        setPhase("fetched");
-        setFetchingAssessments(false);
-        return { quizMetaById: {}, draftVersionById: {} };
-      }
+      const recentIds = recentQuizzes.map(q => q.id);
+      console.log(`[ui:fetchAssessments] Found ${ids.length} total assessments, ${recentIds.length} created in last ${filterWindowMs/1000}s (150s + ${numVideosInPlaylist}*2s)`);
+
+      setFetchingAssessments(false);
+      return { filteredQuizIds: recentIds, quizTitleMap };
     } catch (e: unknown) {
       console.error('[ui:fetchAssessments] Error:', e);
       const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: string }).message) : "Failed to fetch assessments";
       setError(msg);
       setFetchingAssessments(false);
-      return { quizMetaById: {}, draftVersionById: {} };
+      return { filteredQuizIds: [], quizTitleMap: {} };
     }
   }
 

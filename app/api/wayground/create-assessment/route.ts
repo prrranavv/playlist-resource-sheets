@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
 
 const WAYGROUND_ENDPOINT = "https://wayground.com/_aiserver/main/public/v1/socket/video/create-quiz-from-youtube-video";
 
@@ -144,6 +145,26 @@ export async function POST(request: Request) {
       const quizGenKey = dataObj?.data?.quizGenKey || dataObj?.quizGenKey;
       if (quizGenKey) {
         console.log(`[api:wayground:create-assessment] Success - quizGenKey: ${quizGenKey}`);
+
+        // Save quiz key to database
+        try {
+          await supabaseAdmin
+            .from("video_quiz_keys")
+            .upsert(
+              {
+                youtube_video_id: String(videoId),
+                quiz_gen_key: quizGenKey,
+                updated_at: new Date().toISOString(),
+              },
+              {
+                onConflict: "youtube_video_id",
+              }
+            );
+          console.log(`[api:wayground:create-assessment] Saved quiz key to database for video ${videoId}`);
+        } catch (dbErr) {
+          console.error(`[api:wayground:create-assessment] Failed to save quiz key to database:`, dbErr);
+          // Don't fail the request if database save fails - just log it
+        }
       } else {
         console.log('[api:wayground:create-assessment] Success - no quizGenKey in response');
       }
