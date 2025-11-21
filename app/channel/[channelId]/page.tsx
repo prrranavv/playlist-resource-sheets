@@ -115,7 +115,8 @@ export default async function ChannelPage({ params }: PageProps) {
                               alt={ch.channel_title || ''} 
                               fill 
                               sizes="40px"
-                              className="object-cover" 
+                              className="object-cover"
+                              unoptimized
                             />
                           </div>
                         ) : (
@@ -164,7 +165,8 @@ export default async function ChannelPage({ params }: PageProps) {
                     alt={channel.channel_title || ''} 
                     fill 
                     sizes="80px"
-                    className="object-cover" 
+                    className="object-cover"
+                    unoptimized
                   />
                 </div>
               ) : (
@@ -208,6 +210,7 @@ export default async function ChannelPage({ params }: PageProps) {
                             fill
                             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
                             className="object-cover"
+                            unoptimized
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-muted">
@@ -244,7 +247,8 @@ export default async function ChannelPage({ params }: PageProps) {
                                   alt={playlist.channel_title || ''} 
                                   fill 
                                   sizes="20px"
-                                  className="object-cover" 
+                                  className="object-cover"
+                                  unoptimized
                                 />
                               </div>
                             ) : (

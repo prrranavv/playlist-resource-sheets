@@ -188,7 +188,8 @@ export default async function PlaylistPage({ params }: PageProps) {
                               alt={channel.channel_title || ''} 
                               fill 
                               sizes="40px"
-                              className="object-cover" 
+                              className="object-cover"
+                              unoptimized
                             />
                           </div>
                         ) : (
@@ -249,7 +250,8 @@ export default async function PlaylistPage({ params }: PageProps) {
                       alt={playlist.title} 
                       fill 
                       sizes="192px"
-                      className="object-cover" 
+                      className="object-cover"
+                      unoptimized
                     />
                   </a>
                 ) : null;
@@ -271,7 +273,8 @@ export default async function PlaylistPage({ params }: PageProps) {
                           alt={playlist.channel_title} 
                           fill 
                           sizes="24px"
-                          className="object-cover" 
+                          className="object-cover"
+                          unoptimized
                         />
                       </div>
                     ) : (
@@ -367,7 +370,8 @@ export default async function PlaylistPage({ params }: PageProps) {
                                       alt={video.title} 
                                       fill 
                                       sizes="64px" 
-                                      className="object-cover" 
+                                      className="object-cover"
+                                      unoptimized
                                     />
                                   </div>
                                 ) : (
@@ -533,6 +537,7 @@ export default async function PlaylistPage({ params }: PageProps) {
                                       fill
                                       sizes="256px"
                                       className="object-cover"
+                                      unoptimized
                                     />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center bg-muted">
@@ -569,7 +574,8 @@ export default async function PlaylistPage({ params }: PageProps) {
                                             alt={otherPlaylist.channel_title || ''} 
                                             fill 
                                             sizes="24px"
-                                            className="object-cover" 
+                                            className="object-cover"
+                                            unoptimized
                                           />
                                         </div>
                                       ) : (

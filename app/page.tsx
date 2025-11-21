@@ -1797,7 +1797,8 @@ export default function Home() {
                         alt={playlistTitle || 'Playlist'} 
                         fill 
                         sizes="192px"
-                        className="object-cover" 
+                        className="object-cover"
+                        unoptimized
                       />
                     </a>
                   ) : null;
@@ -1871,7 +1872,8 @@ export default function Home() {
                             alt={channelTitle} 
                             fill 
                             sizes="24px"
-                            className="object-cover" 
+                            className="object-cover"
+                            unoptimized
                           />
                         </div>
                       ) : (
@@ -1933,7 +1935,7 @@ export default function Home() {
                             const thumbnailUrl = getYouTubeThumbnailUrl(item.thumbnailUrl, item.id);
                             return thumbnailUrl ? (
                               <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded bg-muted">
-                                <Image src={thumbnailUrl} alt={item.title} fill sizes="64px" className="object-cover" />
+                                <Image src={thumbnailUrl} alt={item.title} fill sizes="64px" className="object-cover" unoptimized />
                               </div>
                             ) : (
                               <div className="h-10 w-16 shrink-0 rounded bg-muted" />
@@ -2047,7 +2049,8 @@ export default function Home() {
                                 alt={channel.channel_title || ''} 
                                 fill 
                                 sizes="40px"
-                                className="object-cover" 
+                                className="object-cover"
+                                unoptimized
                               />
                             </div>
                           ) : (
@@ -2100,6 +2103,7 @@ export default function Home() {
                                           fill
                                           sizes="192px"
                                           className="object-cover"
+                                          unoptimized
                                         />
                                       ) : (
                                         <div className="w-full h-full flex items-center justify-center bg-muted">
