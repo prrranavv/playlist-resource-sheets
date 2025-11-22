@@ -516,6 +516,7 @@ export default function Home() {
     for (const quizId of filteredQuizIds) {
       let retryCount = 0;
       let success = false;
+      let wasCached = false;
 
       while (!success && retryCount < 3) {
         try {
@@ -538,8 +539,10 @@ export default function Home() {
           if (res.ok && data?.quizGenKeysById) {
             Object.assign(allKeys, data.quizGenKeysById);
             if (data?.draftVersionById) Object.assign(allVersions, data.draftVersionById);
+            // Check if this quiz ID came from cache
+            wasCached = data?.fromCache?.[quizId] === true;
             consecutiveRateLimits = 0;
-            console.log(`[ui:createResources] Fetched keys for assessment ${quizId} (${processed + 1}/${totalResources})`);
+            console.log(`[ui:createResources] Fetched keys for assessment ${quizId} (${processed + 1}/${totalResources})${wasCached ? ' [CACHED]' : ''}`);
           }
           success = true;
         } catch (err) {
@@ -550,7 +553,8 @@ export default function Home() {
       }
 
       processed++;
-      if (processed < totalResources) {
+      // Skip delay if value came from cache (no API call was made)
+      if (processed < totalResources && !wasCached) {
         const delay = Math.min(baseDelay + (consecutiveRateLimits * 2000), 30000);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -563,6 +567,7 @@ export default function Home() {
 
       let retryCount = 0;
       let success = false;
+      let wasCached = false;
 
       while (!success && retryCount < 3) {
         try {
@@ -585,9 +590,11 @@ export default function Home() {
           if (res.ok && data?.videoIdsById) {
             const videoId = data.videoIdsById[iv.quizId];
             const title = data.titlesById?.[iv.quizId];
+            // Check if this quiz ID came from cache
+            wasCached = data?.fromCache?.[iv.quizId] === true;
             if (videoId) {
               ivVideoIdMap[iv.quizId] = videoId;
-              console.log(`[ui:createResources] Fetched video ID for IV ${iv.quizId} (${processed + 1}/${totalResources})`);
+              console.log(`[ui:createResources] Fetched video ID for IV ${iv.quizId} (${processed + 1}/${totalResources})${wasCached ? ' [CACHED]' : ''}`);
             }
             if (title) ivTitleMap[iv.quizId] = title;
             consecutiveRateLimits = 0;
@@ -601,7 +608,8 @@ export default function Home() {
       }
 
       processed++;
-      if (processed < totalResources) {
+      // Skip delay if value came from cache (no API call was made)
+      if (processed < totalResources && !wasCached) {
         const delay = Math.min(baseDelay + (consecutiveRateLimits * 2000), 30000);
         await new Promise(resolve => setTimeout(resolve, delay));
       }

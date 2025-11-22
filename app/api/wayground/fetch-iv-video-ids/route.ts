@@ -38,6 +38,7 @@ export async function POST(request: Request) {
 
     const results: Record<string, string | null> = {};
     const titles: Record<string, string | null> = {};
+    const fromCache: Record<string, boolean> = {}; // Track which IDs came from cache
     
     // Process only 1 ID per API call to avoid rate limiting, with 2s delay
     const idsToProcess = quizIds.slice(0, 1); // Max 1 ID per call
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
           console.log(`[fetch-iv-video-ids] Found youtube_video_id in database for ${id}: ${existingData.youtube_video_id}`);
           results[id] = existingData.youtube_video_id;
           titles[id] = null; // Title not stored in quiz_metadata, would need separate fetch if needed
+          fromCache[id] = true; // Mark as cached
           continue; // Skip API call, use database value
         }
         
@@ -108,6 +110,7 @@ export async function POST(request: Request) {
           console.log(`[fetch-iv-video-ids] Extracted title for ${id}: ${title || 'null'}`);
           results[id] = videoId ?? null;
           titles[id] = title ?? null;
+          fromCache[id] = false; // Mark as API call
           
           // Store in database (upsert)
           if (id) {
@@ -132,11 +135,13 @@ export async function POST(request: Request) {
           console.error(`[fetch-iv-video-ids] Raw text for ${id}:`, text.substring(0, 500));
           results[id] = null;
           titles[id] = null;
+          fromCache[id] = false; // API call attempted, even if failed
         }
       } catch (fetchErr) {
         console.error(`[fetch-iv-video-ids] Fetch error for ${id}:`, fetchErr);
         results[id] = null;
         titles[id] = null;
+        fromCache[id] = false; // API call attempted, even if failed
       }
       
       // Wait 2 seconds before next fetch
@@ -145,7 +150,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ videoIdsById: results, titlesById: titles });
+    return NextResponse.json({ videoIdsById: results, titlesById: titles, fromCache });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

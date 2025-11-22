@@ -40,6 +40,7 @@ export async function POST(request: Request) {
 
     const results: Record<string, string | null> = {};
     const versions: Record<string, string | null> = {};
+    const fromCache: Record<string, boolean> = {}; // Track which IDs came from cache
     
     // Process only 1 ID per API call to avoid rate limiting, with 2s delay
     const idsToProcess = quizIds.slice(0, 1); // Max 1 ID per call
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
           console.log(`[fetch-quiz-keys] Found quiz_gen_key in database for ${id}: ${existingData.quiz_gen_key}`);
           results[id] = existingData.quiz_gen_key;
           versions[id] = null; // Version not stored in quiz_metadata, would need separate fetch if needed
+          fromCache[id] = true; // Mark as cached
           continue; // Skip API call, use database value
         }
         
@@ -91,6 +93,7 @@ export async function POST(request: Request) {
           
           results[id] = key ?? null;
           versions[id] = version ?? null;
+          fromCache[id] = false; // Mark as API call
           
           // Store in database (upsert)
           if (id) {
@@ -115,11 +118,13 @@ export async function POST(request: Request) {
           console.error(`[fetch-quiz-keys] Raw text for ${id}:`, text.substring(0, 500));
           results[id] = null;
           versions[id] = null;
+          fromCache[id] = false; // API call attempted, even if failed
         }
       } catch (fetchErr) {
         console.error(`[fetch-quiz-keys] Fetch error for ${id}:`, fetchErr);
         results[id] = null;
         versions[id] = null;
+        fromCache[id] = false; // API call attempted, even if failed
       }
       
       // Wait 2 seconds before next fetch
@@ -128,7 +133,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ quizGenKeysById: results, draftVersionById: versions });
+    return NextResponse.json({ quizGenKeysById: results, draftVersionById: versions, fromCache });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
