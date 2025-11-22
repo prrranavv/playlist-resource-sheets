@@ -212,15 +212,56 @@ export default function Home() {
     autoLogin();
   }, []); // Empty dependency array - runs once on mount
 
+  // Listen for regenerate event to auto-trigger resource creation
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    const handleRegenerate = () => {
+      if (items.length > 0 && phase === "videos") {
+        console.log('[ui:regenerate-event] Triggering resource creation');
+        // Call createResources via a small delay to ensure state is ready
+        setTimeout(() => {
+          // Access createResources from closure - it's defined later but accessible
+          if (items.length > 0) {
+            // Trigger via a ref or state update
+            const event = new CustomEvent('trigger-create-resources');
+            window.dispatchEvent(event);
+          }
+        }, 100);
+      }
+    };
+    
+    window.addEventListener('regenerate-playlist', handleRegenerate);
+    return () => window.removeEventListener('regenerate-playlist', handleRegenerate);
+  }, [items.length, phase]); // Only depend on items.length and phase
+  
+  // Listen for trigger-create-resources event
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    const handleTrigger = () => {
+      if (items.length > 0) {
+        createResources();
+      }
+    };
+    
+    window.addEventListener('trigger-create-resources', handleTrigger);
+    return () => window.removeEventListener('trigger-create-resources', handleTrigger);
+  }, [items.length]); // Depend on items.length to ensure createResources has access to latest items
+
   // Check for URL parameter and auto-load playlist
   useEffect(() => {
     if (typeof window === "undefined") return;
     
     const urlParams = new URLSearchParams(window.location.search);
     const playlistUrl = urlParams.get("url");
+    const regenerate = urlParams.get("regenerate") === "true";
     
     if (playlistUrl && !items.length && !loading && input === "") {
       console.log('[ui:url-param] Found playlist URL in query params, auto-loading:', playlistUrl);
+      if (regenerate) {
+        console.log('[ui:url-param] Regenerate mode: will skip database and fetch fresh from YouTube');
+      }
       setInput(playlistUrl);
       setLoading(true);
       setError(null);
@@ -228,7 +269,11 @@ export default function Home() {
       // Trigger fetch after setting input
       setTimeout(async () => {
         try {
-          const res = await fetch(`/api/playlist?url=${encodeURIComponent(playlistUrl)}`);
+          // Add regenerate flag to force fresh fetch from YouTube
+          const apiUrl = regenerate 
+            ? `/api/playlist?url=${encodeURIComponent(playlistUrl)}&regenerate=true`
+            : `/api/playlist?url=${encodeURIComponent(playlistUrl)}`;
+          const res = await fetch(apiUrl);
           const data = await res.json();
           if (res.ok) {
             console.log(`[ui:url-param] Success: ${data.items.length} videos, playlist="${data.playlistTitle}"`);
@@ -238,7 +283,8 @@ export default function Home() {
             setChannelId((data.channelId as string) || null);
             setChannelThumbnail((data.channelThumbnail as string) || null);
             
-            if (data.fromDatabase && data.slug) {
+            // In regenerate mode, skip redirect to playlist page and proceed with resource creation
+            if (data.fromDatabase && data.slug && !regenerate) {
               router.push(`/playlist/${data.slug}`);
               setLoading(false);
               return;
@@ -247,6 +293,17 @@ export default function Home() {
             const processedItems = (data.items as PlaylistItem[]).sort((a, b) => a.position - b.position);
             setItems(processedItems);
             setPhase("videos");
+            
+            // In regenerate mode, auto-trigger resource creation
+            // Note: createResources will be called after component mounts and state is set
+            if (regenerate && processedItems.length > 0) {
+              console.log('[ui:url-param] Regenerate mode: will auto-trigger resource creation');
+              // Set a flag to trigger resource creation after state updates
+              setTimeout(() => {
+                // Use window event to trigger resource creation
+                window.dispatchEvent(new CustomEvent('regenerate-playlist'));
+              }, 1000);
+            }
           } else {
             setError(data?.error || "Failed to fetch playlist");
           }

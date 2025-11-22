@@ -145,6 +145,7 @@ export async function GET(request: Request) {
   console.log('[api:playlist] Request received');
   const { searchParams } = new URL(request.url);
   const urlOrId = searchParams.get("url") || searchParams.get("playlistId");
+  const regenerate = searchParams.get("regenerate") === "true";
   
   if (!urlOrId) {
     console.log('[api:playlist] Error: Missing URL or playlist ID parameter');
@@ -152,6 +153,9 @@ export async function GET(request: Request) {
   }
 
   console.log(`[api:playlist] Input: ${urlOrId.substring(0, 100)}`);
+  if (regenerate) {
+    console.log('[api:playlist] Regenerate mode: skipping database check, fetching fresh from YouTube');
+  }
 
   const playlistId = extractPlaylistId(urlOrId);
   if (!playlistId) {
@@ -161,16 +165,17 @@ export async function GET(request: Request) {
 
   console.log(`[api:playlist] Extracted playlist ID: ${playlistId}`);
 
-  // Check if playlist already exists in Supabase
-  try {
-    console.log('[api:playlist] Checking if playlist exists in Supabase...');
-    const { data: existingPlaylist, error: playlistError } = await supabaseAdmin
-      .from('playlists')
-      .select('*')
-      .eq('youtube_playlist_id', playlistId)
-      .single();
+  // Check if playlist already exists in Supabase (skip if regenerate mode)
+  if (!regenerate) {
+    try {
+      console.log('[api:playlist] Checking if playlist exists in Supabase...');
+      const { data: existingPlaylist, error: playlistError } = await supabaseAdmin
+        .from('playlists')
+        .select('*')
+        .eq('youtube_playlist_id', playlistId)
+        .single();
 
-    if (existingPlaylist && !playlistError) {
+      if (existingPlaylist && !playlistError) {
       console.log(`[api:playlist] Found existing playlist in Supabase: ${existingPlaylist.title}`);
       
       // Fetch associated videos
@@ -215,12 +220,15 @@ export async function GET(request: Request) {
           fromDatabase: true, // Flag to indicate this came from the database
         });
       }
-    } else {
-      console.log('[api:playlist] Playlist not found in Supabase, fetching from YouTube...');
+      } else {
+        console.log('[api:playlist] Playlist not found in Supabase, fetching from YouTube...');
+      }
+    } catch (dbError) {
+      console.error('[api:playlist] Error checking Supabase:', dbError);
+      // Continue to YouTube API if Supabase check fails
     }
-  } catch (dbError) {
-    console.error('[api:playlist] Error checking Supabase:', dbError);
-    // Continue to YouTube API if Supabase check fails
+  } else {
+    console.log('[api:playlist] Regenerate mode: skipping database check');
   }
 
   // If not in Supabase, fetch from YouTube API
