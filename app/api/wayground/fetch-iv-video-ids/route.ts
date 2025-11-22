@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
 
 const QUIZ_BASE = "https://wayground.com/quiz/";
 
@@ -8,6 +9,10 @@ function extractCsrfFromCookie(cookie?: string): string | undefined {
   if (!cookie) return undefined;
   const match = cookie.match(/x-csrf-token=([^;]+)/);
   return match ? match[1] : undefined;
+}
+
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export async function POST(request: Request) {
@@ -34,12 +39,27 @@ export async function POST(request: Request) {
     const results: Record<string, string | null> = {};
     const titles: Record<string, string | null> = {};
     
-    // Process only 1 ID per API call to avoid rate limiting
+    // Process only 1 ID per API call to avoid rate limiting, with 2s delay
     const idsToProcess = quizIds.slice(0, 1); // Max 1 ID per call
     
     for (const id of idsToProcess) {
       try {
-        console.log(`[fetch-iv-video-ids] Fetching IV quiz ID: ${id}`);
+        // Check database first
+        console.log(`[fetch-iv-video-ids] Checking database for IV quiz ID: ${id}`);
+        const { data: existingData, error: dbError } = await supabaseAdmin
+          .from('quiz_metadata')
+          .select('youtube_video_id')
+          .eq('quiz_id', id)
+          .single();
+        
+        if (!dbError && existingData && existingData.youtube_video_id) {
+          console.log(`[fetch-iv-video-ids] Found youtube_video_id in database for ${id}: ${existingData.youtube_video_id}`);
+          results[id] = existingData.youtube_video_id;
+          titles[id] = null; // Title not stored in quiz_metadata, would need separate fetch if needed
+          continue; // Skip API call, use database value
+        }
+        
+        console.log(`[fetch-iv-video-ids] Not found in database, fetching from API for IV quiz ID: ${id}`);
         const res = await fetch(QUIZ_BASE + encodeURIComponent(id), {
           headers: {
             accept: "application/json, text/plain, */*",
@@ -88,6 +108,25 @@ export async function POST(request: Request) {
           console.log(`[fetch-iv-video-ids] Extracted title for ${id}: ${title || 'null'}`);
           results[id] = videoId ?? null;
           titles[id] = title ?? null;
+          
+          // Store in database (upsert)
+          if (id) {
+            const { error: insertError } = await supabaseAdmin
+              .from('quiz_metadata')
+              .upsert({
+                quiz_id: id,
+                quiz_gen_key: null, // Always null for IVs
+                youtube_video_id: videoId || null,
+              }, {
+                onConflict: 'quiz_id'
+              });
+            
+            if (insertError) {
+              console.error(`[fetch-iv-video-ids] Error storing ${id} in database:`, insertError);
+            } else {
+              console.log(`[fetch-iv-video-ids] Stored ${id} in database with youtube_video_id=${videoId || 'null'}`);
+            }
+          }
         } catch (parseErr) {
           console.error(`[fetch-iv-video-ids] JSON parse error for ${id}:`, parseErr);
           console.error(`[fetch-iv-video-ids] Raw text for ${id}:`, text.substring(0, 500));
@@ -98,6 +137,11 @@ export async function POST(request: Request) {
         console.error(`[fetch-iv-video-ids] Fetch error for ${id}:`, fetchErr);
         results[id] = null;
         titles[id] = null;
+      }
+      
+      // Wait 2 seconds before next fetch
+      if (idsToProcess.indexOf(id) < idsToProcess.length - 1) {
+        await sleep(2000);
       }
     }
 

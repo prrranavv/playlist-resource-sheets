@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +9,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getYouTubeThumbnailUrl } from '@/lib/utils';
+import PlaylistCard from './PlaylistCard';
+import LoadMorePlaylists from './LoadMorePlaylists';
 
 interface PageProps {
   params: Promise<{
@@ -24,7 +24,7 @@ export default async function ChannelPage({ params }: PageProps) {
   console.log('[ChannelPage] Loading channel with ID:', channelId);
 
   // Fetch playlists for this channel
-  const { data: playlists, error: playlistsError } = await supabaseAdmin
+  const { data: playlistsData, error: playlistsError } = await supabaseAdmin
     .from('playlists')
     .select('*')
     .eq('channel_id', channelId)
@@ -32,21 +32,106 @@ export default async function ChannelPage({ params }: PageProps) {
 
   if (playlistsError) {
     console.error('[ChannelPage] Error fetching playlists:', playlistsError);
-    notFound();
   }
 
-  if (!playlists || playlists.length === 0) {
-    console.error('[ChannelPage] No playlists found for channel:', channelId);
-    notFound();
-  }
+  const playlists = playlistsData || [];
 
-  const channel = {
-    channel_id: playlists[0].channel_id,
-    channel_title: playlists[0].channel_title,
-    channel_thumbnail: playlists[0].channel_thumbnail
+  // If no playlists in database, try to get channel info from YouTube API
+  let channel = {
+    channel_id: channelId,
+    channel_title: null as string | null,
+    channel_thumbnail: null as string | null
   };
 
-  console.log('[ChannelPage] Channel found:', channel.channel_title, 'with', playlists.length, 'playlists');
+  if (playlists && playlists.length > 0) {
+    channel = {
+      channel_id: playlists[0].channel_id,
+      channel_title: playlists[0].channel_title,
+      channel_thumbnail: playlists[0].channel_thumbnail
+    };
+    console.log('[ChannelPage] Channel found:', channel.channel_title, 'with', playlists.length, 'playlists');
+  } else {
+    console.log('[ChannelPage] No playlists in database, will fetch from YouTube');
+    
+    // Try to get channel info from YouTube API
+    try {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      if (apiKey) {
+        const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
+        channelUrl.searchParams.set("part", "snippet");
+        channelUrl.searchParams.set("id", channelId);
+        channelUrl.searchParams.set("key", apiKey);
+        
+        const channelRes = await fetch(channelUrl.toString(), { cache: 'no-store' });
+        if (channelRes.ok) {
+          const channelData = await channelRes.json();
+          const channelSnippet = channelData?.items?.[0]?.snippet;
+          if (channelSnippet) {
+            channel.channel_title = channelSnippet.title || null;
+            channel.channel_thumbnail = channelSnippet.thumbnails?.medium?.url || channelSnippet.thumbnails?.default?.url || null;
+            console.log('[ChannelPage] Fetched channel info from YouTube:', channel.channel_title);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[ChannelPage] Error fetching channel info:', err);
+    }
+  }
+
+  // Fetch additional playlists from YouTube API
+  const youtubePlaylists: Array<{
+    id: string;
+    title: string;
+    thumbnailUrl: string;
+    videoCount: number;
+    publishedAt: string;
+  }> = [];
+
+  try {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (apiKey && channelId) {
+      const url = new URL("https://www.googleapis.com/youtube/v3/playlists");
+      url.searchParams.set("part", "snippet,contentDetails");
+      url.searchParams.set("channelId", channelId);
+      url.searchParams.set("maxResults", "50");
+      url.searchParams.set("key", apiKey);
+
+      const res = await fetch(url.toString(), { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        const items = data.items || [];
+        
+        // Get existing playlist IDs to filter them out
+        const existingPlaylistIds = new Set(playlists.map(p => p.youtube_playlist_id));
+        
+        for (const item of items) {
+          if (youtubePlaylists.length >= 5) break;
+          if (existingPlaylistIds.has(item.id)) continue; // Skip existing playlists
+          
+          const snippet = item.snippet;
+          const contentDetails = item.contentDetails;
+          if (!snippet) continue;
+
+          const thumbnailUrl = snippet.thumbnails?.high?.url 
+            || snippet.thumbnails?.medium?.url 
+            || snippet.thumbnails?.default?.url 
+            || "";
+
+          youtubePlaylists.push({
+            id: item.id,
+            title: snippet.title || "",
+            thumbnailUrl,
+            videoCount: parseInt(contentDetails?.itemCount || "0", 10),
+            publishedAt: snippet.publishedAt || "",
+          });
+        }
+        
+        console.log('[ChannelPage] Fetched', youtubePlaylists.length, 'additional playlists from YouTube');
+      }
+    }
+  } catch (err) {
+    console.error('[ChannelPage] Error fetching YouTube playlists:', err);
+  }
 
   // Fetch all unique channels for sidebar
   const { data: allPlaylists, error: allPlaylistsError } = await supabaseAdmin
@@ -181,125 +266,63 @@ export default async function ChannelPage({ params }: PageProps) {
                 </div>
               )}
               <div>
-                <h1 className="text-3xl font-bold">{channel.channel_title}</h1>
-                <p className="text-muted-foreground">{playlists.length} playlists</p>
+                <h1 className="text-3xl font-bold">{channel.channel_title || 'Channel'}</h1>
+                <p className="text-muted-foreground">
+                  {playlists.length > 0 ? `${playlists.length} playlists` : 'No playlists yet'}
+                  {youtubePlaylists.length > 0 && ` • ${youtubePlaylists.length} more available`}
+                </p>
               </div>
             </div>
 
-            {/* Playlists Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {playlists.map((playlist) => (
-                <Link
-                  key={playlist.id}
-                  href={`/playlist/${playlist.slug}`}
-                  className="block group"
-                >
-                  <div className="relative pb-3">
-                    {/* Stack effect layers */}
-                    <div className="absolute bottom-0 left-3 right-3 h-3 bg-muted-foreground/27 rounded-lg" />
-                    <div className="absolute bottom-1.5 left-1.5 right-1.5 h-2.5 bg-muted-foreground/36 rounded-lg" />
-                    
-                    {/* Thumbnail container */}
-                    <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted transition-all duration-200 group-hover:scale-[1.03] group-hover:shadow-lg shadow-sm">
-                      {(() => {
-                        const thumbnailUrl = getYouTubeThumbnailUrl(playlist.thumbnail_url);
-                        return thumbnailUrl ? (
-                          <Image
-                            src={thumbnailUrl}
-                            alt={playlist.title}
-                            fill
-                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
-                            className="object-cover"
-                            unoptimized
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-muted">
-                            <Image 
-                              src="/youtube.png" 
-                              alt="YouTube" 
-                              width={48}
-                              height={48}
-                              className="opacity-30"
-                            />
-                          </div>
-                        );
-                      })()}
-                      
-                      {/* Video count badge - top right with icon */}
-                      {playlist.video_count && (
-                        <div className="absolute top-1.5 right-1.5 bg-background/95 backdrop-blur-sm text-foreground text-[10px] font-medium px-1.5 py-0.5 rounded border border-border shadow-sm flex items-center gap-0.5">
-                          <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-                          </svg>
-                          {playlist.video_count}
-                        </div>
-                      )}
-                      
-                      {/* Info overlay - bottom */}
-                      <div className="absolute bottom-0 left-0 right-0 p-1.5">
-                        <div className="bg-background/98 backdrop-blur-md rounded p-1.5 border border-border shadow-lg">
-                          <div className="flex items-center gap-1.5">
-                            {/* Channel thumbnail */}
-                            {playlist.channel_thumbnail ? (
-                              <div className="relative h-5 w-5 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border">
-                                <Image 
-                                  src={playlist.channel_thumbnail} 
-                                  alt={playlist.channel_title || ''} 
-                                  fill 
-                                  sizes="20px"
-                                  className="object-cover"
-                                  unoptimized
-                                />
-                              </div>
-                            ) : (
-                              <div className="h-5 w-5 shrink-0 rounded-full bg-muted flex items-center justify-center ring-1 ring-border">
-                                <Image 
-                                  src="/youtube.png" 
-                                  alt="YouTube" 
-                                  width={10}
-                                  height={10}
-                                  className="opacity-50"
-                                />
-                              </div>
-                            )}
-                            
-                            {/* Text content */}
-                            <div className="flex-1 min-w-0">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <h3 className="text-sm font-semibold truncate text-foreground leading-tight">
-                                      {playlist.title}
-                                    </h3>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p className="max-w-xs">{playlist.title}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                              {playlist.channel_title && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <p className="text-[13px] text-muted-foreground truncate leading-tight">
-                                        {playlist.channel_title}
-                                      </p>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>{playlist.channel_title}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            {/* Existing Playlists on Wayground */}
+            {playlists.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h2 className="text-xl font-semibold">Existing on Wayground</h2>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {playlists.map((playlist) => (
+                    <PlaylistCard
+                      key={playlist.id}
+                      playlist={{
+                        id: playlist.id,
+                        title: playlist.title,
+                        thumbnailUrl: playlist.thumbnail_url,
+                        videoCount: playlist.video_count,
+                        channelThumbnail: playlist.channel_thumbnail,
+                        channelTitle: playlist.channel_title,
+                        slug: playlist.slug,
+                      }}
+                      showCreateOverlay={false}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Other Playlists from This Creator */}
+            {youtubePlaylists.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <h2 className="text-xl font-semibold">Other Playlists from This Creator</h2>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <LoadMorePlaylists
+                    channelId={channelId}
+                    existingPlaylistIds={new Set(playlists.map(p => p.youtube_playlist_id))}
+                    channelThumbnail={channel.channel_thumbnail}
+                    channelTitle={channel.channel_title}
+                    initialPlaylists={youtubePlaylists}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Call to Action Banner */}
             <Card className="border-2 border-dashed border-muted-foreground/25 bg-muted/30">

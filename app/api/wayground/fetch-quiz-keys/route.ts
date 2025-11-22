@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
 
 const QUIZ_BASE = "https://wayground.com/quiz/";
 
@@ -9,6 +10,10 @@ function extractCsrfFromCookie(cookie?: string): string | undefined {
   if (!cookie) return undefined;
   const match = cookie.match(/x-csrf-token=([^;]+)/);
   return match ? match[1] : undefined;
+}
+
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export async function POST(request: Request) {
@@ -36,12 +41,27 @@ export async function POST(request: Request) {
     const results: Record<string, string | null> = {};
     const versions: Record<string, string | null> = {};
     
-    // Process only 1 ID per API call to avoid rate limiting
+    // Process only 1 ID per API call to avoid rate limiting, with 2s delay
     const idsToProcess = quizIds.slice(0, 1); // Max 1 ID per call
     
     for (const id of idsToProcess) {
       try {
-        console.log(`[fetch-quiz-keys] Fetching quiz ID: ${id}`);
+        // Check database first
+        console.log(`[fetch-quiz-keys] Checking database for quiz ID: ${id}`);
+        const { data: existingData, error: dbError } = await supabaseAdmin
+          .from('quiz_metadata')
+          .select('quiz_gen_key')
+          .eq('quiz_id', id)
+          .single();
+        
+        if (!dbError && existingData && existingData.quiz_gen_key) {
+          console.log(`[fetch-quiz-keys] Found quiz_gen_key in database for ${id}: ${existingData.quiz_gen_key}`);
+          results[id] = existingData.quiz_gen_key;
+          versions[id] = null; // Version not stored in quiz_metadata, would need separate fetch if needed
+          continue; // Skip API call, use database value
+        }
+        
+        console.log(`[fetch-quiz-keys] Not found in database, fetching from API for quiz ID: ${id}`);
         const res = await fetch(QUIZ_BASE + encodeURIComponent(id), {
           headers: {
             accept: "application/json, text/plain, */*",
@@ -65,11 +85,31 @@ export async function POST(request: Request) {
           
           const key = (data?.data?.draft?.aiCreateMeta?.quizGenKey || data?.draft?.aiCreateMeta?.quizGenKey || data?.aiCreateMeta?.quizGenKey) as string | undefined;
           const version = (data?.data?.quiz?.draftVersion || data?.quiz?.draftVersion) as string | undefined;
+          const title = (data?.data?.draft?.info?.name || data?.draft?.info?.name || data?.data?.quiz?.info?.name || data?.quiz?.info?.name) as string | undefined;
           
-          console.log(`[fetch-quiz-keys] Extracted for ${id}: quizGenKey=${key}, draftVersion=${version}`);
+          console.log(`[fetch-quiz-keys] Extracted for ${id}: quizGenKey=${key}, draftVersion=${version}, title=${title}`);
           
           results[id] = key ?? null;
           versions[id] = version ?? null;
+          
+          // Store in database (upsert)
+          if (id) {
+            const { error: insertError } = await supabaseAdmin
+              .from('quiz_metadata')
+              .upsert({
+                quiz_id: id,
+                quiz_gen_key: key || null,
+                youtube_video_id: null, // Always null for assessments
+              }, {
+                onConflict: 'quiz_id'
+              });
+            
+            if (insertError) {
+              console.error(`[fetch-quiz-keys] Error storing ${id} in database:`, insertError);
+            } else {
+              console.log(`[fetch-quiz-keys] Stored ${id} in database with quiz_gen_key=${key || 'null'}`);
+            }
+          }
         } catch (parseErr) {
           console.error(`[fetch-quiz-keys] JSON parse error for ${id}:`, parseErr);
           console.error(`[fetch-quiz-keys] Raw text for ${id}:`, text.substring(0, 500));
@@ -80,6 +120,11 @@ export async function POST(request: Request) {
         console.error(`[fetch-quiz-keys] Fetch error for ${id}:`, fetchErr);
         results[id] = null;
         versions[id] = null;
+      }
+      
+      // Wait 2 seconds before next fetch
+      if (idsToProcess.indexOf(id) < idsToProcess.length - 1) {
+        await sleep(2000);
       }
     }
 

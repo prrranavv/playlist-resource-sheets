@@ -58,11 +58,17 @@ export async function GET() {
       });
       
       // Add channel to each subject it has playlists in
+      // Filter playlists to only include those matching the subject
       subjects.forEach(subject => {
         if (!subjectMap.has(subject)) {
           subjectMap.set(subject, []);
         }
-        subjectMap.get(subject)!.push(channel);
+        // Create a copy of the channel with filtered playlists for this subject
+        const channelWithFilteredPlaylists = {
+          ...channel,
+          playlists: channel.playlists.filter(p => p.subject === subject)
+        };
+        subjectMap.get(subject)!.push(channelWithFilteredPlaylists);
       });
       
       // If no subjects, add to "Other" category

@@ -129,6 +129,32 @@ export type Database = {
           updated_at?: string;
         };
       };
+      quiz_metadata: {
+        Row: {
+          id: string;
+          quiz_id: string;
+          quiz_gen_key: string | null;
+          youtube_video_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          quiz_id: string;
+          quiz_gen_key?: string | null;
+          youtube_video_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          quiz_id?: string;
+          quiz_gen_key?: string | null;
+          youtube_video_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
   };
 };

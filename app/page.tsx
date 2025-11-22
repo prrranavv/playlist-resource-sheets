@@ -17,6 +17,7 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSubjectIcon } from "@/lib/icons";
 import { getYouTubeThumbnailUrl } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 type PlaylistItem = {
   id: string;
@@ -110,10 +111,12 @@ export default function Home() {
         video_count: number;
         channel_title: string | null;
         channel_thumbnail: string | null;
+        subject: string | null;
       }>;
     }>;
   }>>([]);
   const [loadingExplore, setLoadingExplore] = useState(true);
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
 
   // Subject options
   const subjectOptions = [
@@ -209,6 +212,53 @@ export default function Home() {
     autoLogin();
   }, []); // Empty dependency array - runs once on mount
 
+  // Check for URL parameter and auto-load playlist
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const playlistUrl = urlParams.get("url");
+    
+    if (playlistUrl && !items.length && !loading && input === "") {
+      console.log('[ui:url-param] Found playlist URL in query params, auto-loading:', playlistUrl);
+      setInput(playlistUrl);
+      setLoading(true);
+      setError(null);
+      
+      // Trigger fetch after setting input
+      setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/playlist?url=${encodeURIComponent(playlistUrl)}`);
+          const data = await res.json();
+          if (res.ok) {
+            console.log(`[ui:url-param] Success: ${data.items.length} videos, playlist="${data.playlistTitle}"`);
+            setPlaylistId(data.playlistId as string);
+            setPlaylistTitle((data.playlistTitle as string) || null);
+            setChannelTitle((data.channelTitle as string) || null);
+            setChannelId((data.channelId as string) || null);
+            setChannelThumbnail((data.channelThumbnail as string) || null);
+            
+            if (data.fromDatabase && data.slug) {
+              router.push(`/playlist/${data.slug}`);
+              setLoading(false);
+              return;
+            }
+            
+            const processedItems = (data.items as PlaylistItem[]).sort((a, b) => a.position - b.position);
+            setItems(processedItems);
+            setPhase("videos");
+          } else {
+            setError(data?.error || "Failed to fetch playlist");
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to fetch playlist");
+        } finally {
+          setLoading(false);
+        }
+      }, 100);
+    }
+  }, []); // Run once on mount
+
   // Fetch explore data on mount
   useEffect(() => {
     async function fetchExploreData() {
@@ -281,8 +331,8 @@ export default function Home() {
     if (res.ok && Array.isArray(data?.interactive)) {
       const allIVs = data.interactive as Array<{ quizId: string; draftVersion?: string | null; createdAt?: string; title?: string }>;
 
-      // Filter for IVs created in the last 150s + N*2s (where N = number of videos in playlist)
-      const filterWindowMs = (150 + numVideosInPlaylist * 2) * 1000;
+      // Filter for IVs created in the last 150s + N*2.5s (where N = number of videos in playlist)
+      const filterWindowMs = (150 + numVideosInPlaylist * 2.5) * 1000;
       const cutoffTime = Date.now() - filterWindowMs;
       const recentIVs = allIVs.filter(iv => {
         if (!iv.createdAt) return false;
@@ -290,7 +340,7 @@ export default function Home() {
         return createdTime >= cutoffTime;
       });
 
-      console.log(`[ui:fetchInteractives] Found ${allIVs.length} total IVs, ${recentIVs.length} created in last ${filterWindowMs/1000}s (150s + ${numVideosInPlaylist}*2s)`);
+      console.log(`[ui:fetchInteractives] Found ${allIVs.length} total IVs, ${recentIVs.length} created in last ${filterWindowMs/1000}s (150s + ${numVideosInPlaylist}*2.5s)`);
 
       // Return filtered IVs with basic info (without fetching video IDs yet)
       const filteredIVs = recentIVs.map(iv => ({
@@ -437,12 +487,12 @@ export default function Home() {
       console.error('[ui:createResources] Error fetching quiz keys from database:', err);
     }
 
-    // Fetch last 2000 draft assessments and filter for ones created in last 150s + N*2s
+    // Fetch last 2000 draft assessments and filter for ones created in last 150s + N*2.5s
     console.log('[ui:createResources] Phase 5: Fetching filtered assessments');
     const { filteredQuizIds, quizTitleMap } = await fetchAssessments(items.length);
     console.log(`[ui:createResources] Filtered ${filteredQuizIds.length} assessments`);
 
-    // Fetch all IVs and filter for ones created in last 150s + N*2s
+    // Fetch all IVs and filter for ones created in last 150s + N*2.5s
     console.log('[ui:createResources] Phase 6: Fetching filtered interactive videos');
     setCreateFlowStatus("fetchingIV");
     const { filteredIVs } = await fetchInteractivesAndUpdate(items.length);
@@ -1543,9 +1593,9 @@ export default function Home() {
       }
       setQuizMetaById((prev) => ({ ...prev, ...quizTitleMap }));
 
-      // Filter for quizzes created in the last 150s + N*2s (where N = number of videos in playlist)
-      // N*2s accounts for the 2s gap between each video creation call
-      const filterWindowMs = (150 + numVideosInPlaylist * 2) * 1000;
+      // Filter for quizzes created in the last 150s + N*2.5s (where N = number of videos in playlist)
+      // N*2.5s accounts for the 2.5s gap between each video creation call
+      const filterWindowMs = (150 + numVideosInPlaylist * 2.5) * 1000;
       const cutoffTime = Date.now() - filterWindowMs;
       const recentQuizzes = Array.isArray(data?.quizzes)
         ? (data.quizzes as Array<{ id: string; title: string; createdAt?: string }>)
@@ -1557,7 +1607,7 @@ export default function Home() {
         : [];
 
       const recentIds = recentQuizzes.map(q => q.id);
-      console.log(`[ui:fetchAssessments] Found ${ids.length} total assessments, ${recentIds.length} created in last ${filterWindowMs/1000}s (150s + ${numVideosInPlaylist}*2s)`);
+      console.log(`[ui:fetchAssessments] Found ${ids.length} total assessments, ${recentIds.length} created in last ${filterWindowMs/1000}s (150s + ${numVideosInPlaylist}*2.5s)`);
 
       setFetchingAssessments(false);
       return { filteredQuizIds: recentIds, quizTitleMap };
@@ -2026,7 +2076,50 @@ export default function Home() {
               <h2 className="text-2xl font-bold">Explore Playlists</h2>
             </div>
 
-            {exploreSections.map((section) => (
+            {/* Subject Filter Pills - Horizontal Scrollable */}
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-muted-foreground">Filter by subject:</span>
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                {exploreSections
+                  .filter(section => section.channels.length > 0)
+                  .map((section) => {
+                    const isSelected = selectedSubjects.includes(section.subject);
+                    return (
+                      <Badge
+                        key={section.subject}
+                        variant={isSelected ? "default" : "outline"}
+                        className="cursor-pointer flex-shrink-0 px-4 py-2 text-sm transition-all hover:scale-105 hover:shadow-md hover:bg-primary hover:text-primary-foreground"
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedSubjects(selectedSubjects.filter(s => s !== section.subject));
+                          } else {
+                            setSelectedSubjects([...selectedSubjects, section.subject]);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          {getSubjectIcon(section.subject, "w-4 h-4")}
+                          <span className="font-medium">{section.subject}</span>
+                        </div>
+                      </Badge>
+                    );
+                  })}
+                {selectedSubjects.length > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="cursor-pointer flex-shrink-0 px-4 py-2 text-sm transition-all hover:scale-105 hover:shadow-md hover:bg-secondary/90"
+                    onClick={() => setSelectedSubjects([])}
+                  >
+                    Clear filters
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Filtered Sections */}
+            {exploreSections
+              .filter(section => selectedSubjects.length === 0 || selectedSubjects.includes(section.subject))
+              .map((section) => (
               <div key={section.subject} className="space-y-4">
                 <div className="flex items-center gap-2">
                   {getSubjectIcon(section.subject, "w-5 h-5 text-foreground")}
