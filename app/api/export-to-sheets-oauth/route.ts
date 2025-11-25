@@ -78,11 +78,26 @@ export async function POST(request: NextRequest) {
 
     const playlistLink = playlistId ? `https://www.youtube.com/playlist?list=${playlistId}` : '';
 
+    // UTM params for Google Sheets links
+    const utmParams = `utm_source=app&utm_medium=googlesheet&utm_term=${encodeURIComponent(playlistTitle || '')}`;
+
     for (const video of videos) {
       const videoLink = `https://www.youtube.com/watch?v=${video.youtube_video_id}`;
-      const assessmentLink = video.assessment_link || '';
+      
+      // Add UTM params to assessment link if it exists
+      let assessmentLink = video.assessment_link || '';
+      if (assessmentLink) {
+        assessmentLink = `${assessmentLink}${assessmentLink.includes('?') ? '&' : '?'}${utmParams}`;
+      }
+      
       const assessmentQuizId = video.assessment_quiz_id || '';
-      const ivLink = video.interactive_video_link || '';
+      
+      // Add UTM params to interactive video link if it exists
+      let ivLink = video.interactive_video_link || '';
+      if (ivLink) {
+        ivLink = `${ivLink}${ivLink.includes('?') ? '&' : '?'}${utmParams}`;
+      }
+      
       const ivQuizId = video.interactive_video_quiz_id || '';
 
       rows.push([
