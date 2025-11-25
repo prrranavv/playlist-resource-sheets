@@ -114,13 +114,28 @@ export async function POST(request: Request) {
     });
 
     console.log(`[api:wayground:fetch-assessments] Response status: ${res.status}`);
+
+    // Check if response is OK before processing
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[api:wayground:fetch-assessments] Wayground API error (${res.status}): ${text.substring(0, 500)}`);
+      return NextResponse.json({
+        error: `Wayground API returned ${res.status}`,
+        details: text.substring(0, 500)
+      }, { status: 500 });
+    }
+
     const text = await res.text();
     let data: unknown = null;
     try {
       data = JSON.parse(text);
     } catch {
       console.error('[api:wayground:fetch-assessments] Failed to parse response as JSON');
-      return new NextResponse(text, { status: res.status });
+      console.error(`[api:wayground:fetch-assessments] Response text: ${text.substring(0, 500)}`);
+      return NextResponse.json({
+        error: 'Failed to parse Wayground response',
+        details: text.substring(0, 500)
+      }, { status: 500 });
     }
 
     const map = new Map<string, QuizSummary>();
@@ -129,11 +144,11 @@ export async function POST(request: Request) {
 
     console.log(`[api:wayground:fetch-assessments] Found ${quizzes.length} assessments`);
 
-    return NextResponse.json({ 
-      quizIds: quizzes.map(q => q.id), 
+    return NextResponse.json({
+      quizIds: quizzes.map(q => q.id),
       quizzes,
-      raw: data 
-    }, { status: res.status });
+      raw: data
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error(`[api:wayground:fetch-assessments] Error: ${message}`);
