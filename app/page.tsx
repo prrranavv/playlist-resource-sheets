@@ -256,13 +256,20 @@ export default function Home() {
     const urlParams = new URLSearchParams(window.location.search);
     const playlistUrl = urlParams.get("url");
     const regenerate = urlParams.get("regenerate") === "true";
-    
+    const urlSubject = urlParams.get("subject");
+    const urlGrade = urlParams.get("grade");
+
     if (playlistUrl && !items.length && !loading && input === "") {
       console.log('[ui:url-param] Found playlist URL in query params, auto-loading:', playlistUrl);
       if (regenerate) {
         console.log('[ui:url-param] Regenerate mode: will skip database and fetch fresh from YouTube');
+        if (urlSubject) console.log('[ui:url-param] Preserving subject:', urlSubject);
+        if (urlGrade) console.log('[ui:url-param] Preserving grade:', urlGrade);
       }
       setInput(playlistUrl);
+      // Set subject and grade from URL params if provided (for regenerate mode)
+      if (urlSubject) setSubject(urlSubject);
+      if (urlGrade) setGrade(urlGrade);
       setLoading(true);
       setError(null);
       

@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
     const { data: playlist, error } = await supabaseAdmin
       .from("playlists")
-      .select("id, youtube_playlist_id, title, slug")
+      .select("id, youtube_playlist_id, title, slug, subject, grade")
       .eq("slug", slug)
       .single();
 
@@ -32,6 +32,8 @@ export async function GET(request: Request) {
       playlistId: playlist.youtube_playlist_id,
       title: playlist.title,
       slug: playlist.slug,
+      subject: playlist.subject,
+      grade: playlist.grade,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

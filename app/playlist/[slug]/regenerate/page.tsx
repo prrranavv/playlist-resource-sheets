@@ -24,8 +24,8 @@ export default function RegeneratePage() {
     async function startRegeneration() {
       try {
         setStatus("loading");
-        
-        // Fetch playlist from database to get YouTube playlist ID
+
+        // Fetch playlist from database to get YouTube playlist ID and metadata
         const playlistRes = await fetch(`/api/playlist-by-slug?slug=${encodeURIComponent(slug)}`);
         const playlistData = await playlistRes.json();
 
@@ -35,10 +35,33 @@ export default function RegeneratePage() {
 
         const youtubePlaylistId = playlistData.playlistId;
         const playlistUrl = `https://www.youtube.com/playlist?list=${youtubePlaylistId}`;
+        const subject = playlistData.subject;
+        const grade = playlistData.grade;
 
-        // Redirect to homepage with playlist URL and regenerate flag
+        // Delete the playlist from database before regenerating
+        console.log('[RegeneratePage] Deleting existing playlist from database');
+        const deleteRes = await fetch(`/api/delete-playlist?slug=${encodeURIComponent(slug)}`, {
+          method: 'DELETE',
+        });
+
+        if (!deleteRes.ok) {
+          const deleteData = await deleteRes.json();
+          console.error('[RegeneratePage] Failed to delete playlist:', deleteData.error);
+          throw new Error(deleteData.error || "Failed to delete playlist");
+        }
+
+        console.log('[RegeneratePage] Playlist deleted successfully');
+
+        // Redirect to homepage with playlist URL, regenerate flag, and subject/grade
         setStatus("redirecting");
-        router.push(`/?url=${encodeURIComponent(playlistUrl)}&regenerate=true`);
+        const params = new URLSearchParams({
+          url: playlistUrl,
+          regenerate: 'true',
+        });
+        if (subject) params.append('subject', subject);
+        if (grade) params.append('grade', grade);
+
+        router.push(`/?${params.toString()}`);
       } catch (err) {
         console.error("[RegeneratePage] Error:", err);
         setError(err instanceof Error ? err.message : "Failed to start regeneration");
