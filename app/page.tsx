@@ -1741,26 +1741,26 @@ export default function Home() {
             )}
             {/* Removed playlist ID display */}
             <div className="flex flex-col sm:flex-row gap-3 mt-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">Subject</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm shrink-0">Subject</span>
                 <Combobox
                   options={subjectOptions}
                   value={subject}
                   onValueChange={setSubject}
                   placeholder="Select subject"
                   searchPlaceholder="Search subjects..."
-                  className="w-[160px]"
+                  className="w-[180px] max-w-[180px]"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm">Grade</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm shrink-0">Grade</span>
                 <Combobox
                   options={gradeOptions}
                   value={grade}
                   onValueChange={setGrade}
                   placeholder="Select grade"
                   searchPlaceholder="Search grades..."
-                  className="w-[160px]"
+                  className="w-[200px] max-w-[200px]"
                 />
               </div>
               <div className="flex items-center gap-2 ml-auto">
@@ -2019,13 +2019,13 @@ export default function Home() {
                   
                   <div className="flex flex-wrap items-center gap-2">
                     {subject && (
-                      <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
-                        {subject}
+                      <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black max-w-[180px] min-w-0 shrink">
+                        <span className="truncate">{subject}</span>
                       </span>
                     )}
                     {grade && (
-                      <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
-                        {grade}
+                      <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black max-w-[180px] min-w-0 shrink">
+                        <span className="truncate">{grade}</span>
                       </span>
                     )}
                     <span className="text-sm text-muted-foreground">

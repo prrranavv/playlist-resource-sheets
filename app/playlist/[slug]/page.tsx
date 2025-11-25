@@ -298,13 +298,13 @@ export default async function PlaylistPage({ params }: PageProps) {
                 
                 <div className="flex flex-wrap items-center gap-2">
                   {playlist.subject && (
-                    <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
-                      {playlist.subject}
+                    <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black max-w-[180px] min-w-0 shrink">
+                      <span className="truncate">{playlist.subject}</span>
                     </span>
                   )}
                   {playlist.grade && (
-                    <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black">
-                      {playlist.grade}
+                    <span className="inline-flex items-center rounded-md bg-transparent px-2.5 py-1 text-xs font-medium text-black border border-black max-w-[180px] min-w-0 shrink">
+                      <span className="truncate">{playlist.grade}</span>
                     </span>
                   )}
                   <span className="text-sm text-muted-foreground">
