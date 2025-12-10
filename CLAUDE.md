@@ -42,6 +42,48 @@ This is a Next.js application that creates Wayground assessments and interactive
 
 ## Recent Optimizations (November 2025)
 
+### 0. Enhanced Retry Logic with Halt-on-Failure (December 2025)
+
+**Date**: December 2025
+**Objective**: Add robust retry logic (up to 10 retries) for all API calls and halt workflow on failure.
+
+#### Problem Statement
+API calls could fail due to rate limiting, network issues, or server errors. With only 3 retries, transient failures could cause partial data creation and leave the workflow in an inconsistent state.
+
+#### Solution Implemented
+
+**New Utility Function** (`app/page.tsx:36-77`):
+- `retryWithBackoff<T>()` - Generic retry utility with exponential backoff
+- Configurable: `maxRetries`, `baseDelay`, `maxDelay`, `onRetry` callback, `shouldRetry` predicate
+- Default: 10 retries with 2s base delay, max 30s delay
+
+**New Error Class** (`app/page.tsx:79-84`):
+- `WorkflowHaltError` - Custom error class with `phase` property
+- Thrown when all retries fail for critical operations
+
+**Updated Functions:**
+1. **`fetchAssessments()`** (line ~1706): Uses `retryWithBackoff`, throws `WorkflowHaltError` on failure
+2. **`fetchInteractivesAndUpdate()`** (line ~447): Uses `retryWithBackoff`, throws `WorkflowHaltError` on failure
+3. **Phase 4** (line ~625): Database fetch with retry, throws `WorkflowHaltError` on failure
+4. **Phase 7** (line ~673): Individual item fetches with 10 retries, halts on failure
+
+**`createResources()` Error Handling** (line ~576):
+- Entire function body wrapped in try-catch
+- Catches `WorkflowHaltError` and displays phase-specific error message
+- Resets UI state on failure: `setCreateFlowStatus("idle")`, clears progress indicators
+- User sees: "Workflow halted at {phase}. {message}. Please try again."
+
+#### Key Improvements
+
+✅ **10 retries** instead of 3 for all critical API calls
+✅ **Exponential backoff** prevents overwhelming the server
+✅ **Halt-on-failure** ensures data consistency - no partial saves
+✅ **Clear error messages** tell user exactly which phase failed
+✅ **UI state reset** allows user to retry the operation
+✅ **Centralized retry utility** for consistent behavior across all API calls
+
+---
+
 ### 1. Cache Hit Signal Optimization (December 2025)
 
 **Date**: December 2025  
@@ -1014,15 +1056,52 @@ Response:
 - **Base delay**: 2 seconds between requests
 - **Adaptive delays**: Increases with consecutive rate limits
 - **Max delay**: 30 seconds
-- **Retry logic**: Up to 3 retries per resource
+- **Retry logic**: Up to **10 retries** per resource (increased from 3)
 - **Exponential backoff**: `baseDelay * Math.pow(2, retryCount)`
+
+### Retry Configuration
+
+The application uses a centralized retry utility with configurable options:
+
+```typescript
+const MAX_RETRIES = 10;  // Maximum retry attempts
+const BASE_DELAY_MS = 2000;  // 2 second base delay
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;     // Default: 10
+    baseDelay?: number;      // Default: 2000ms
+    maxDelay?: number;       // Default: 30000ms
+    onRetry?: (attempt: number, error: unknown) => void;
+    shouldRetry?: (error: unknown) => boolean;
+  }
+): Promise<T>
+```
+
+### Halt-on-Failure Behavior
+
+Critical API calls now halt the entire workflow if all retries fail, preventing partial/corrupted data:
+
+**Phases with retry + halt behavior:**
+- **Phase 4**: Fetch quiz keys from database
+- **Phase 5**: Fetch filtered assessments (`fetchAssessments`)
+- **Phase 6**: Fetch filtered interactive videos (`fetchInteractivesAndUpdate`)
+- **Phase 7**: Fetch quiz gen keys and video IDs
+
+**When workflow halts:**
+1. `WorkflowHaltError` is thrown with phase information
+2. Error message displayed to user: "Workflow halted at {phase}. Please try again."
+3. UI state is reset (progress indicators, status messages)
+4. User can retry the entire operation
 
 ### Error Handling
 
 - All API routes log errors with descriptive prefixes
-- Frontend retries failed requests up to 3 times
-- Graceful degradation - continues processing other items on failure
-- Comprehensive console logging for debugging
+- Frontend retries failed requests up to **10 times** with exponential backoff
+- **Halt-on-failure**: Workflow stops immediately if critical API calls fail after all retries
+- No graceful degradation for critical phases - ensures data consistency
+- Comprehensive console logging for debugging including retry attempts
 
 ---
 

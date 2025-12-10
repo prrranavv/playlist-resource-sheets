@@ -28,6 +28,62 @@ type PlaylistItem = {
   videoUrl: string;
 };
 
+// Retry utility function with exponential backoff
+// MAX_RETRIES = 10 for critical API calls
+const MAX_RETRIES = 10;
+const BASE_DELAY_MS = 2000;
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    baseDelay?: number;
+    maxDelay?: number;
+    onRetry?: (attempt: number, error: unknown) => void;
+    shouldRetry?: (error: unknown) => boolean;
+  } = {}
+): Promise<T> {
+  const {
+    maxRetries = MAX_RETRIES,
+    baseDelay = BASE_DELAY_MS,
+    maxDelay = 30000,
+    onRetry,
+    shouldRetry = () => true,
+  } = options;
+
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === maxRetries || !shouldRetry(error)) {
+        throw error;
+      }
+
+      const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+
+      if (onRetry) {
+        onRetry(attempt, error);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+// Error class for halting the workflow
+class WorkflowHaltError extends Error {
+  constructor(message: string, public readonly phase: string) {
+    super(message);
+    this.name = 'WorkflowHaltError';
+  }
+}
+
 export default function Home() {
   const router = useRouter();
   const [input, setInput] = useState("");
@@ -390,9 +446,39 @@ export default function Home() {
 
   async function fetchInteractivesAndUpdate(numVideosInPlaylist: number): Promise<{ filteredIVs: Array<{ quizId: string; draftVersion: string | null; title: string }> }> {
     console.log(`[ui:fetchInteractives] Starting interactive video fetch for playlist with ${numVideosInPlaylist} videos`);
-    const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST", headers: cookieHeader() });
-    const data = await res.json();
-    if (res.ok && Array.isArray(data?.interactive)) {
+
+    try {
+      // Use retry logic with up to 10 retries
+      const data = await retryWithBackoff(
+        async () => {
+          const res = await fetch("/api/wayground/fetch-interactive-map", { method: "POST", headers: cookieHeader() });
+          const result = await res.json();
+
+          // Check for rate limiting errors
+          if (result?.error?.includes?.("TOO_MANY_REQUESTS") || result?.error?.includes?.("rateLimiter")) {
+            throw new Error("Rate limited - will retry");
+          }
+
+          if (!res.ok) {
+            throw new Error(result?.error || "Failed to fetch interactive videos");
+          }
+
+          if (!Array.isArray(result?.interactive)) {
+            throw new Error("Invalid response format - no interactive array");
+          }
+
+          return result;
+        },
+        {
+          maxRetries: MAX_RETRIES,
+          baseDelay: BASE_DELAY_MS,
+          onRetry: (attempt, error) => {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            console.log(`[ui:fetchInteractives] Retry ${attempt}/${MAX_RETRIES} after error: ${msg}`);
+          },
+        }
+      );
+
       const allIVs = data.interactive as Array<{ quizId: string; draftVersion?: string | null; createdAt?: string; title?: string }>;
 
       // Filter for IVs created in the last 150s + N*2.5s (where N = number of videos in playlist)
@@ -415,9 +501,13 @@ export default function Home() {
 
       console.log('[ui:fetchInteractives] Complete - returning filtered IVs');
       return { filteredIVs };
+    } catch (e: unknown) {
+      console.error('[ui:fetchInteractives] All retries failed:', e);
+      const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: string }).message) : "Failed to fetch interactive videos";
+      setError(msg);
+      // Throw WorkflowHaltError to halt the workflow
+      throw new WorkflowHaltError(`Failed to fetch interactive videos after ${MAX_RETRIES} retries: ${msg}`, "Phase 6: Fetch Interactive Videos");
     }
-    console.log('[ui:fetchInteractives] API call failed');
-    return { filteredIVs: [] };
   }
   function cookieHeader(): Record<string, string> {
     const cookie = (typeof window !== "undefined") ? (localStorage.getItem("waygroundCookie") || "") : "";
@@ -493,6 +583,7 @@ export default function Home() {
     setInteractiveProgress({ done: 0, total: items.length });
     setError(null);
 
+    try {
     console.log('[ui:createResources] Phase 1: Creating assessments');
     setCreateFlowStatus("creatingA");
     setBulkCreating(true);
@@ -532,23 +623,41 @@ export default function Home() {
     startWaitCountdown(waitTime);
     await pause(waitTime * 1000);
 
-    // Fetch quiz keys from database
+    // Fetch quiz keys from database with retry logic
     console.log('[ui:createResources] Phase 4: Fetching quiz keys from database...');
     setCreateFlowStatus("fetchingA");
     const localQuizKeyById: Record<string, string> = {};
     try {
       const videoIds = items.map(it => it.id).join(',');
-      const res = await fetch(`/api/video-quiz-keys?videoIds=${encodeURIComponent(videoIds)}`);
-      const data = await res.json();
-      if (res.ok && data.quizKeyMap) {
-        Object.assign(localQuizKeyById, data.quizKeyMap);
-        console.log(`[ui:createResources] Fetched ${Object.keys(localQuizKeyById).length} quiz keys from database`);
-        setAssessmentMatchedCount(Object.keys(localQuizKeyById).length);
-      } else {
-        console.error('[ui:createResources] Failed to fetch quiz keys from database:', data.error);
-      }
+      const data = await retryWithBackoff(
+        async () => {
+          const res = await fetch(`/api/video-quiz-keys?videoIds=${encodeURIComponent(videoIds)}`);
+          const result = await res.json();
+          if (!res.ok) {
+            throw new Error(result?.error || "Failed to fetch quiz keys from database");
+          }
+          if (!result.quizKeyMap) {
+            throw new Error("Invalid response - no quizKeyMap");
+          }
+          return result;
+        },
+        {
+          maxRetries: MAX_RETRIES,
+          baseDelay: BASE_DELAY_MS,
+          onRetry: (attempt, error) => {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            console.log(`[ui:createResources] Phase 4 retry ${attempt}/${MAX_RETRIES} after error: ${msg}`);
+          },
+        }
+      );
+      Object.assign(localQuizKeyById, data.quizKeyMap);
+      console.log(`[ui:createResources] Fetched ${Object.keys(localQuizKeyById).length} quiz keys from database`);
+      setAssessmentMatchedCount(Object.keys(localQuizKeyById).length);
     } catch (err) {
-      console.error('[ui:createResources] Error fetching quiz keys from database:', err);
+      console.error('[ui:createResources] All retries failed for Phase 4:', err);
+      const msg = err instanceof Error ? err.message : "Failed to fetch quiz keys from database";
+      setError(msg);
+      throw new WorkflowHaltError(`Phase 4 failed after ${MAX_RETRIES} retries: ${msg}`, "Phase 4: Fetch Quiz Keys from Database");
     }
 
     // Fetch last 2000 draft assessments and filter for ones created in last 150s + N*2.5s
@@ -576,13 +685,13 @@ export default function Home() {
     let consecutiveRateLimits = 0;
     const baseDelay = 2000; // 2 seconds gap
 
-    // Fetch assessment keys
+    // Fetch assessment keys with up to 10 retries per item
     for (const quizId of filteredQuizIds) {
       let retryCount = 0;
       let success = false;
       let wasCached = false;
 
-      while (!success && retryCount < 3) {
+      while (!success && retryCount < MAX_RETRIES) {
         try {
           const res = await fetch("/api/wayground/fetch-quiz-keys", {
             method: "POST",
@@ -594,13 +703,17 @@ export default function Home() {
           if (data?.error?.includes?.("TOO_MANY_REQUESTS") || data?.error?.includes?.("rateLimiter")) {
             consecutiveRateLimits++;
             const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount));
-            console.log(`[ui:createResources] Rate limited on assessment ${quizId}, waiting ${retryDelay}ms (retry ${retryCount + 1}/3)`);
+            console.log(`[ui:createResources] Rate limited on assessment ${quizId}, waiting ${retryDelay}ms (retry ${retryCount + 1}/${MAX_RETRIES})`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             retryCount++;
             continue;
           }
 
-          if (res.ok && data?.quizGenKeysById) {
+          if (!res.ok) {
+            throw new Error(data?.error || "Failed to fetch quiz key");
+          }
+
+          if (data?.quizGenKeysById) {
             Object.assign(allKeys, data.quizGenKeysById);
             if (data?.draftVersionById) Object.assign(allVersions, data.draftVersionById);
             // Check if this quiz ID came from cache
@@ -610,10 +723,21 @@ export default function Home() {
           }
           success = true;
         } catch (err) {
-          console.error(`[ui:createResources] Failed to fetch quiz key for ${quizId}:`, err);
+          console.error(`[ui:createResources] Failed to fetch quiz key for ${quizId} (attempt ${retryCount + 1}/${MAX_RETRIES}):`, err);
           retryCount++;
-          if (retryCount < 3) await new Promise(resolve => setTimeout(resolve, 5000));
+          if (retryCount < MAX_RETRIES) {
+            const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount - 1));
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
         }
+      }
+
+      // If all retries failed, halt the workflow
+      if (!success) {
+        const msg = `Failed to fetch quiz key for assessment ${quizId} after ${MAX_RETRIES} retries`;
+        console.error(`[ui:createResources] ${msg}`);
+        setError(msg);
+        throw new WorkflowHaltError(msg, "Phase 7: Fetch Quiz Keys");
       }
 
       processed++;
@@ -624,7 +748,7 @@ export default function Home() {
       }
     }
 
-    // Fetch IV video IDs
+    // Fetch IV video IDs with up to 10 retries per item
     for (const iv of filteredIVs) {
       // Preserve title from fetch-interactive-map
       if (iv.title) ivTitleMap[iv.quizId] = iv.title;
@@ -633,7 +757,7 @@ export default function Home() {
       let success = false;
       let wasCached = false;
 
-      while (!success && retryCount < 3) {
+      while (!success && retryCount < MAX_RETRIES) {
         try {
           const res = await fetch("/api/wayground/fetch-iv-video-ids", {
             method: "POST",
@@ -645,13 +769,17 @@ export default function Home() {
           if (data?.error?.includes?.("TOO_MANY_REQUESTS") || data?.error?.includes?.("rateLimiter")) {
             consecutiveRateLimits++;
             const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount));
-            console.log(`[ui:createResources] Rate limited on IV ${iv.quizId}, waiting ${retryDelay}ms (retry ${retryCount + 1}/3)`);
+            console.log(`[ui:createResources] Rate limited on IV ${iv.quizId}, waiting ${retryDelay}ms (retry ${retryCount + 1}/${MAX_RETRIES})`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             retryCount++;
             continue;
           }
 
-          if (res.ok && data?.videoIdsById) {
+          if (!res.ok) {
+            throw new Error(data?.error || "Failed to fetch video ID");
+          }
+
+          if (data?.videoIdsById) {
             const videoId = data.videoIdsById[iv.quizId];
             const title = data.titlesById?.[iv.quizId];
             // Check if this quiz ID came from cache
@@ -665,10 +793,21 @@ export default function Home() {
           }
           success = true;
         } catch (err) {
-          console.error(`[ui:createResources] Failed to fetch video ID for IV ${iv.quizId}:`, err);
+          console.error(`[ui:createResources] Failed to fetch video ID for IV ${iv.quizId} (attempt ${retryCount + 1}/${MAX_RETRIES}):`, err);
           retryCount++;
-          if (retryCount < 3) await new Promise(resolve => setTimeout(resolve, 5000));
+          if (retryCount < MAX_RETRIES) {
+            const retryDelay = Math.min(30000, baseDelay * Math.pow(2, retryCount - 1));
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
         }
+      }
+
+      // If all retries failed, halt the workflow
+      if (!success) {
+        const msg = `Failed to fetch video ID for IV ${iv.quizId} after ${MAX_RETRIES} retries`;
+        console.error(`[ui:createResources] ${msg}`);
+        setError(msg);
+        throw new WorkflowHaltError(msg, "Phase 7: Fetch IV Video IDs");
       }
 
       processed++;
@@ -832,11 +971,28 @@ export default function Home() {
 
     // Save to Supabase with the actual data FIRST
     await saveToSupabase(assessmentMetaById, ivPairsForSave, localQuizKeyById);
-    
+
     // THEN mark as complete and show output (sheet will already be created by saveToSupabase)
     setResourcesPublished(true);
     setShowOutput(true);
     console.log("[ui:createResources] COMPLETE - All resources created, published, and sheet generated! Output displayed.");
+    } catch (err) {
+      // Handle WorkflowHaltError and other errors
+      if (err instanceof WorkflowHaltError) {
+        console.error(`[ui:createResources] WORKFLOW HALTED at ${err.phase}: ${err.message}`);
+        setError(`Workflow halted at ${err.phase}. ${err.message}. Please try again.`);
+      } else {
+        console.error('[ui:createResources] Unexpected error:', err);
+        const msg = err instanceof Error ? err.message : "An unexpected error occurred";
+        setError(`Resource creation failed: ${msg}. Please try again.`);
+      }
+      // Reset UI state on failure
+      setCreateFlowStatus("idle");
+      setBulkCreating(false);
+      setBulkCreatingInteractive(false);
+      setPublishing(false);
+      setPublishingIVs(false);
+    }
   }
 
   async function copyPlaylistLink() {
@@ -1651,15 +1807,40 @@ export default function Home() {
     console.log(`[ui:fetchAssessments] Starting assessment fetch for playlist with ${numVideosInPlaylist} videos`);
     setFetchingAssessments(true);
     setError(null);
+
     try {
-      const res = await fetch("/api/wayground/fetch-assessments", { method: "POST", headers: cookieHeader() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to fetch assessments");
-      const ids = Array.isArray(data?.quizIds) ? (data.quizIds as string[]) : [];
+      // Use retry logic with up to 10 retries
+      const result = await retryWithBackoff(
+        async () => {
+          const res = await fetch("/api/wayground/fetch-assessments", { method: "POST", headers: cookieHeader() });
+          const data = await res.json();
+
+          // Check for rate limiting errors
+          if (data?.error?.includes?.("TOO_MANY_REQUESTS") || data?.error?.includes?.("rateLimiter")) {
+            throw new Error("Rate limited - will retry");
+          }
+
+          if (!res.ok) {
+            throw new Error(data?.error || "Failed to fetch assessments");
+          }
+
+          return data;
+        },
+        {
+          maxRetries: MAX_RETRIES,
+          baseDelay: BASE_DELAY_MS,
+          onRetry: (attempt, error) => {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            console.log(`[ui:fetchAssessments] Retry ${attempt}/${MAX_RETRIES} after error: ${msg}`);
+          },
+        }
+      );
+
+      const ids = Array.isArray(result?.quizIds) ? (result.quizIds as string[]) : [];
       setFetchedQuizIds(ids);
       const quizTitleMap: Record<string, { title: string }> = {};
-      if (Array.isArray(data?.quizzes)) {
-        for (const q of data.quizzes as Array<{ id: string; title: string; createdAt?: string }>) {
+      if (Array.isArray(result?.quizzes)) {
+        for (const q of result.quizzes as Array<{ id: string; title: string; createdAt?: string }>) {
           if (q?.id) quizTitleMap[q.id] = { title: q.title };
         }
       }
@@ -1669,8 +1850,8 @@ export default function Home() {
       // N*2.5s accounts for the 2.5s gap between each video creation call
       const filterWindowMs = (150 + numVideosInPlaylist * 2.5) * 1000;
       const cutoffTime = Date.now() - filterWindowMs;
-      const recentQuizzes = Array.isArray(data?.quizzes)
-        ? (data.quizzes as Array<{ id: string; title: string; createdAt?: string }>)
+      const recentQuizzes = Array.isArray(result?.quizzes)
+        ? (result.quizzes as Array<{ id: string; title: string; createdAt?: string }>)
             .filter(q => {
               if (!q.createdAt) return false;
               const createdTime = new Date(q.createdAt).getTime();
@@ -1684,11 +1865,12 @@ export default function Home() {
       setFetchingAssessments(false);
       return { filteredQuizIds: recentIds, quizTitleMap };
     } catch (e: unknown) {
-      console.error('[ui:fetchAssessments] Error:', e);
+      console.error('[ui:fetchAssessments] All retries failed:', e);
       const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: string }).message) : "Failed to fetch assessments";
       setError(msg);
       setFetchingAssessments(false);
-      return { filteredQuizIds: [], quizTitleMap: {} };
+      // Throw WorkflowHaltError to halt the workflow
+      throw new WorkflowHaltError(`Failed to fetch assessments after ${MAX_RETRIES} retries: ${msg}`, "Phase 5: Fetch Assessments");
     }
   }
 
