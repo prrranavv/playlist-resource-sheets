@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   try {
     const headerCookie = request.headers.get("x-wayground-cookie") || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE;
     const headerCsrf = request.headers.get("x-wayground-csrf");
-    const csrfToken = headerCsrf || extractCsrfFromCookie(headerCookie) || HARDCODED_CSRF || "Y1mHRsKn-QS9Y7fwqLbzCKBIWnSB-kd6QSWQ";
+    const csrfToken = headerCsrf || extractCsrfFromCookie(headerCookie) || HARDCODED_CSRF;
     
     if (!headerCookie) {
       console.error('[api:wayground:fetch-interactive-map] No cookie provided');
@@ -34,33 +34,42 @@ export async function POST(request: Request) {
     // Step 1: paginate through drafts with activityTypes:["video-quiz"] and collect quiz ids + draft versions + createdAt + titles
     const candidates = new Map<string, { draftVersion: string | null; createdAt?: string; title?: string }>(); // quizId -> {draftVersion, createdAt, title}
     let from = 0;
-    const size = 2000;
+    // Wayground returns HTTP 500 for video-quiz searches when size is too large (e.g. 2000).
+    // Keep page size modest and page through results.
+    const size = 100;
     let pagesFetched = 0;
     console.log('[api:wayground:fetch-interactive-map] Fetching interactive videos from Wayground');
-    while (pagesFetched < 20) { // up to 2000 items
+    while (pagesFetched < 20) { // 20 * 100 = up to 2000 items
       const url = new URL(SEARCH_ENDPOINT);
       url.searchParams.set("from", String(from));
       url.searchParams.set("size", String(size));
       
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        accept: "application/json, text/plain, */*",
+        origin: "https://wayground.com",
+        referer: "https://wayground.com/admin/my-library/createdByMe?activityStatus=draft&activityType=[%22video-quiz%22]",
+        cookie: headerCookie,
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        "accept-language": "en-US,en;q=0.9",
+        priority: "u=1, i",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-dest": "empty",
+        "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+      };
+
+      // Sending a fake/stale CSRF token causes Wayground to return HTTP 500.
+      // Only include it when we actually have one from request/cookie/env.
+      if (csrfToken) {
+        headers["x-csrf-token"] = csrfToken;
+      }
+
       const pageRes = await fetchJson(url.toString(), {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json, text/plain, */*",
-          origin: "https://wayground.com",
-          referer: "https://wayground.com/admin/my-library/createdByMe?activityStatus=draft&activityType=[%22video-quiz%22]",
-          cookie: headerCookie,
-          "x-csrf-token": csrfToken,
-          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-          "accept-language": "en-US,en;q=0.9",
-          priority: "u=1, i",
-          "sec-fetch-mode": "cors",
-          "sec-fetch-site": "same-origin",
-          "sec-fetch-dest": "empty",
-          "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
-          "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": '"macOS"',
-        },
+        headers,
         body: JSON.stringify({
           searchTerm: "",
           sortBy: "createdAt",
