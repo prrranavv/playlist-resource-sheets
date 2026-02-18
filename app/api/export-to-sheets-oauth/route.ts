@@ -16,13 +16,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use YOUR OAuth tokens from environment variables
+    // Use refresh token as source of truth. Access token is optional and will be
+    // refreshed automatically by googleapis when needed.
     const accessToken = process.env.GOOGLE_ACCESS_TOKEN;
     const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
-    if (!accessToken || !refreshToken) {
+    if (!refreshToken) {
       return NextResponse.json(
-        { error: 'Server not configured. Missing GOOGLE_ACCESS_TOKEN or GOOGLE_REFRESH_TOKEN in environment variables.' },
+        { error: 'Server not configured. Missing GOOGLE_REFRESH_TOKEN in environment variables.' },
         { status: 500 }
       );
     }
@@ -35,8 +36,8 @@ export async function POST(request: NextRequest) {
     );
 
     oauth2Client.setCredentials({
-      access_token: accessToken,
       refresh_token: refreshToken,
+      ...(accessToken ? { access_token: accessToken } : {}),
     });
 
     const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
@@ -268,8 +269,8 @@ export async function POST(request: NextRequest) {
     )) {
       return NextResponse.json(
         { 
-          error: 'Google authentication expired. Admin needs to refresh tokens. Check server logs.',
-          details: 'GOOGLE_ACCESS_TOKEN or GOOGLE_REFRESH_TOKEN is invalid or expired'
+          error: 'Google authentication expired. Admin needs to refresh Google refresh token.',
+          details: 'GOOGLE_REFRESH_TOKEN is invalid, revoked, or expired'
         },
         { status: 500 }
       );

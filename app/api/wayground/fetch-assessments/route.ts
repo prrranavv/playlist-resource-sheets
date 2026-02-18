@@ -64,6 +64,16 @@ function collectQuizSummaries(value: unknown, results: Map<string, QuizSummary>)
   for (const v of Object.values(obj)) collectQuizSummaries(v, results);
 }
 
+async function fetchJson(url: string, init?: RequestInit) {
+  const res = await fetch(url, init);
+  const text = await res.text();
+  try {
+    return { ok: res.ok, status: res.status, json: JSON.parse(text) };
+  } catch {
+    return { ok: res.ok, status: res.status, text };
+  }
+}
+
 export async function POST(request: Request) {
   console.log('[api:wayground:fetch-assessments] Request received');
   try {
@@ -71,10 +81,6 @@ export async function POST(request: Request) {
     const headerCookie = request.headers.get("x-wayground-cookie") || process.env.WAYGROUND_COOKIE || HARDCODED_COOKIE;
     const headerCsrf = request.headers.get("x-wayground-csrf");
     const csrfToken = headerCsrf || extractCsrfFromCookie(headerCookie) || HARDCODED_CSRF;
-
-    const url = new URL(SEARCH_ENDPOINT);
-    url.searchParams.set("from", "0");
-    url.searchParams.set("size", "2000");
 
     const body = {
       searchTerm: "",
@@ -86,15 +92,22 @@ export async function POST(request: Request) {
     };
 
     console.log('[api:wayground:fetch-assessments] Fetching assessment library from Wayground');
-    const res = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
+    const size = 100;
+    let from = 0;
+    let pagesFetched = 0;
+    const map = new Map<string, QuizSummary>();
+
+    while (pagesFetched < 20) { // 20 * 100 = up to 2000 items
+      const url = new URL(SEARCH_ENDPOINT);
+      url.searchParams.set("from", String(from));
+      url.searchParams.set("size", String(size));
+
+      const headers: Record<string, string> = {
         "content-type": "application/json",
         accept: "application/json, text/plain, */*",
         origin: "https://wayground.com",
         referer: "https://wayground.com/admin/my-library/createdByMe?activityStatus=draft&activityType=[%22quiz%22]",
         cookie: headerCookie,
-        "x-csrf-token": csrfToken,
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
         "accept-language": "en-US,en;q=0.9",
         priority: "u=1, i",
@@ -104,50 +117,68 @@ export async function POST(request: Request) {
         "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"macOS"',
-        "sentry-trace": "779477c69e394065b4c9218cf8c2c067-9a27227c92496252-0",
-        baggage:
-          "sentry-environment=production,sentry-release=23830a981692412e5b89fbcbf8e2a7d28bbb7319,sentry-public_key=f4055af1be6347b5a3b645683a6b50ff,sentry-trace_id=779477c69e394065b4c9218cf8c2c067,sentry-sample_rate=0.05,sentry-transaction=admin-my-library-createdbyme,sentry-sampled=false",
-        "x-amzn-trace-id": "Root=1-68e52359-ae9ad25174541c7b1cfefbf8;Parent=9b63a65568d31119;Sampled=1",
-        "x-q-traceid": "Root=1-68e52359-ae9ad25174541c7b1cfefbf8;Parent=9b63a65568d31119;Sampled=1",
-      },
-      body: JSON.stringify(body),
-    });
+      };
+      if (csrfToken) {
+        headers["x-csrf-token"] = csrfToken;
+      }
 
-    console.log(`[api:wayground:fetch-assessments] Response status: ${res.status}`);
+      const pageRes = await fetchJson(url.toString(), {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      console.log(`[api:wayground:fetch-assessments] Page ${pagesFetched + 1} response status: ${pageRes.status}, ok: ${pageRes.ok}`);
 
-    // Check if response is OK before processing
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`[api:wayground:fetch-assessments] Wayground API error (${res.status}): ${text.substring(0, 500)}`);
-      return NextResponse.json({
-        error: `Wayground API returned ${res.status}`,
-        details: text.substring(0, 500)
-      }, { status: 500 });
+      if (!pageRes.ok) {
+        let errorText = 'No response text';
+        if ('text' in pageRes) {
+          const textVal = (pageRes as { text: unknown }).text;
+          errorText = typeof textVal === 'string' ? textVal : String(textVal);
+        }
+        console.error(`[api:wayground:fetch-assessments] Wayground API error (${pageRes.status}): ${errorText.substring(0, 500)}`);
+        if (pagesFetched === 0) {
+          return NextResponse.json({
+            error: `Wayground API returned ${pageRes.status}`,
+            details: errorText.substring(0, 500)
+          }, { status: 500 });
+        }
+        break;
+      }
+
+      if (!('json' in pageRes)) {
+        let errorText = 'No response text';
+        if ('text' in pageRes) {
+          const textVal = (pageRes as { text: unknown }).text;
+          errorText = typeof textVal === 'string' ? textVal : String(textVal);
+        }
+        console.error(`[api:wayground:fetch-assessments] Failed to parse Wayground response: ${errorText.substring(0, 500)}`);
+        if (pagesFetched === 0) {
+          return NextResponse.json({
+            error: 'Failed to parse Wayground response',
+            details: errorText.substring(0, 500)
+          }, { status: 500 });
+        }
+        break;
+      }
+
+      collectQuizSummaries(pageRes.json, map);
+      pagesFetched += 1;
+      from += size;
+
+      type PageJson = { hits?: unknown[] };
+      const hitsLen = (pageRes.json as PageJson)?.hits?.length as number | undefined;
+      if (hitsLen !== undefined && hitsLen < size) break;
     }
 
-    const text = await res.text();
-    let data: unknown = null;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      console.error('[api:wayground:fetch-assessments] Failed to parse response as JSON');
-      console.error(`[api:wayground:fetch-assessments] Response text: ${text.substring(0, 500)}`);
-      return NextResponse.json({
-        error: 'Failed to parse Wayground response',
-        details: text.substring(0, 500)
-      }, { status: 500 });
-    }
-
-    const map = new Map<string, QuizSummary>();
-    collectQuizSummaries(data, map);
     const quizzes = Array.from(map.values()).slice(0, 2000);
 
+    console.log(`[api:wayground:fetch-assessments] Successfully fetched ${pagesFetched} pages`);
     console.log(`[api:wayground:fetch-assessments] Found ${quizzes.length} assessments`);
 
     return NextResponse.json({
       quizIds: quizzes.map(q => q.id),
       quizzes,
-      raw: data
+      raw: { pagesFetched }
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

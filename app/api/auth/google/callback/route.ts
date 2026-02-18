@@ -110,10 +110,10 @@ export async function GET(request: NextRequest) {
             <div class="instructions">
               <strong>Next Steps:</strong>
               <ol>
-                <li>Copy the tokens below</li>
-                <li>Add them to your <code>.env.local</code> file</li>
-                <li>Restart your development server</li>
-                <li>Try the Google Sheets export again</li>
+                <li>Copy the <code>GOOGLE_REFRESH_TOKEN</code> below (required)</li>
+                <li>Add it to your environment variables</li>
+                <li><code>GOOGLE_ACCESS_TOKEN</code> is optional and auto-refreshed when missing/expired</li>
+                <li>Restart your server and try Google Sheets export again</li>
               </ol>
             </div>
 
